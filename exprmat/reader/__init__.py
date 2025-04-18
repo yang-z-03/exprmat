@@ -1,2 +1,2 @@
 
-from metadata import metadata, load_metadata
+from exprmat.reader.metadata import metadata, load_metadata
