@@ -29,7 +29,9 @@ class metadata:
     groups : list[str] | None
         Experimental groupings, if not set, this column is set to uniform value '.'.
     
-    Note: The inner metadata table follows several naming conventions. That auto-generated tables
+    Notes
+    -----------
+    The inner metadata table follows several naming conventions. That auto-generated tables
     must have column ``location`` and ``sample`` for locations and sample names, and ``batch``
     and ``group`` columns for batches and experimental groupings, and ``modality`` for library
     modality, ``taxa`` for default taxa where no prefix in features is specified. other metadata 
