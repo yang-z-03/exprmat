@@ -13,6 +13,8 @@ setup(
         'umap-learn >= 0.5.0',
         'scvi-tools >= 1.3.0',
         'scanpy',
+        'anndata',
+        'mudata',
         'pandas',
         'numpy',
         'matplotlib',

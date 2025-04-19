@@ -4,46 +4,44 @@ import pandas
 
 
 class metadata:
-    '''
-    Metadata at sample level
-    '''
+    """
+    Metadata at sample level. This class is a wrapper around sample level metadata table in 
+    pandas format, and can be dumped and loaded using plain text tables.
+    
+    Parameters
+    ----------
 
-    def __init__(self, locations, names = None, batches = None, groups = None, df = None):
-        """
-        Metadata at sample level. This class is a wrapper around sample level metadata table in 
-        pandas format, and can be dumped and loaded using plain text tables.
+    locations : list[str]
+        File system paths indicating directories where the 10x-like matrix files locate. The 
+        file reading scheme is default to 10x matrix files including ``matrix.mtx``, 
+        ``barcodes.tsv`` and ``features.tsv``. Appropriate compression levels and column 
+        information is guessed from file extensions and content columns of ``features.tsv`` 
+        (or ``genes.tsv``).
+    
+    names : list[str] | None
+        Sample names in the loaded experiment. If left to None, names of the folder will be 
+        used. Since the folder names may duplicate, this is not forced to be unique. This might 
+        introduce some unexpected settings, so you are recommended to set this parameter explicitly.
+    
+    batches : list[str] | None
+        Batch information, if not set, this column is set to uniform value '.'.
+    
+    groups : list[str] | None
+        Experimental groupings, if not set, this column is set to uniform value '.'.
+    
+    Note: The inner metadata table follows several naming conventions. That auto-generated tables
+    must have column ``location`` and ``sample`` for locations and sample names, and ``batch``
+    and ``group`` columns for batches and experimental groupings, and ``modality`` for library
+    modality, ``taxa`` for default taxa where no prefix in features is specified. other metadata 
+    information is not necessary, and can be appended as specified by user, but do not set duplicate
+    column names as these six.
+    """
+
+    def __init__(
+            self, locations, modality, default_taxa,
+            names = None, batches = None, groups = None, df = None
+        ):
         
-        Parameters
-        ----------
-
-        locations : list[str]
-            File system paths indicating directories where the 10x-like matrix files locate. The 
-            file reading scheme is default to 10x matrix files including ``matrix.mtx``, 
-            ``barcodes.tsv`` and ``features.tsv``. Appropriate compression levels and column 
-            information is guessed from file extensions and content columns of ``features.tsv`` 
-            (or ``genes.tsv``).
-        
-        names : list[str] | None
-            Sample names in the loaded experiment. If left to None, names of the folder will be 
-            used. Since the folder names may duplicate, this is not forced to be unique. This might 
-            introduce some unexpected settings, so you are recommended to set this parameter explicitly.
-        
-        batches : list[str] | None
-            Batch information, if not set, this column is set to uniform value '.'.
-        
-        groups : list[str] | None
-            Experimental groupings, if not set, this column is set to uniform value '.'.
-
-        Notes
-        ----------
-
-        The inner metadata table follows several naming conventions. That auto-generated tables
-        must have column ``location`` and ``sample`` for locations and sample names, and ``batch``
-        and ``group`` columns for batches and experimental groupings. other metadata information
-        is not necessary, and can be appended as specified by user, but do not set duplicate
-        column names as these four.
-        """
-
         if df is not None:
             if isinstance(df, pandas.DataFrame):
                 self.dataframe = df
@@ -75,7 +73,9 @@ class metadata:
             'location': locations,
             'sample': names,
             'batch': batches,
-            'group': groups
+            'group': groups,
+            'modality': modality,
+            'taxa': default_taxa
         })
     
 
@@ -94,9 +94,21 @@ class metadata:
         simple conditional filters to process the sample names.
 
         It should be noted that the column names should not be duplicated with the pre-defined ones:
-        one of ``location``, ``sample``, ``batch`` and ``group``, unless you are sure about what you do.
+        one of ``location``, ``modality``, ``sample``, ``batch``, ``taxa`` and ``group``, unless you 
+        are sure about what you are doing.
         '''
         self.dataframe[name] = default
+
+    
+    def set_paste(self, key1, key2, dest, sep = ':'):
+        '''
+        Paste the stringify values of two keys with separator
+        '''
+        
+        source1 = self.dataframe[key1].tolist()
+        source2 = self.dataframe[key2].tolist()
+        paste = [str(s1) + sep + str(s2) for s1, s2 in zip(source1, source2)]
+        self.dataframe[dest] = paste
     
 
     def set_fraction(self, key = 'sample', dest = 'group', sep = '.', fraction = 0, fallback = '.'):
@@ -221,5 +233,7 @@ def load_metadata(fpath):
     assert 'sample' in df.columns
     assert 'batch' in df.columns
     assert 'group' in df.columns
+    assert 'modality' in df.columns
+    assert 'taxa' in df.columns
     return metadata(locations = None, df = df)
 
