@@ -29,7 +29,8 @@ def get_genome(taxa):
     if 'genes' in genome[taxa].keys(): return genome[taxa]['genes']
     genome[taxa]['genes'] = pandas.read_table(
         os.path.join(basepath, f'{taxa}', 'genome.tsv.gz'),
-        index_col = '.ugene'
+        # set low memory to false to allow correct adjustment to mixed dtype.
+        index_col = '.ugene', low_memory = False
     )
 
     return genome[taxa]['genes']

@@ -9,6 +9,7 @@
 
 import re
 import os
+import sys
 
 # foregrounds -----------------------------------------------------------------
 
@@ -135,7 +136,7 @@ def error(text: str) -> None:
     print('[error]', end = ' ')
     ansi_reset()
     print(text)
-    exit()
+    raise Exception()
 
 def warning(text: str) -> None:
     fore_yellow()

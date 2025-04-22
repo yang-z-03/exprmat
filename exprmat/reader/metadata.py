@@ -230,12 +230,12 @@ def load_metadata(fpath):
     Read the metadata table from disk.
     '''
 
-    df = pandas.read_table(fpath, sep = '\t', header = True, index_col = None)
+    df = pandas.read_table(fpath, sep = '\t', index_col = None)
     assert 'location' in df.columns
     assert 'sample' in df.columns
     assert 'batch' in df.columns
     assert 'group' in df.columns
     assert 'modality' in df.columns
     assert 'taxa' in df.columns
-    return metadata(locations = None, df = df)
+    return metadata(locations = None, modality = None, default_taxa = None, df = df)
 
