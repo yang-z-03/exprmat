@@ -30,7 +30,7 @@ def get_genome(taxa):
     genome[taxa]['genes'] = pandas.read_table(
         os.path.join(basepath, f'{taxa}', 'genome.tsv.gz'),
         # set low memory to false to allow correct adjustment to mixed dtype.
-        index_col = '.ugene', low_memory = False
+        index_col = '.ugene', dtype = {'.seqid': str}
     )
 
     return genome[taxa]['genes']
@@ -62,19 +62,19 @@ def get_mapper_name(taxa):
         name_list = gtable[['gene']].values.transpose()[0].tolist()
         name_finder = {}
 
-        alias_list = gtable[['alias']].values.transpose()[0].tolist()
+        # alias_list = gtable[['alias']].values.transpose()[0].tolist()
         id_list = gtable.index.tolist()
         duplicates = []
         alias_finder = {}
 
-        for x in range(len(alias_list)):
-            alias = alias_list[x]
-            if not isinstance(alias, str): continue
-            if len(alias) > 0:
-                spl = alias.split(';')
-                for y in spl:
-                    if y not in alias_finder.keys(): alias_finder[y] = x
-                    elif y not in duplicates: duplicates += [y]
+        # for x in range(len(alias_list)):
+        #     alias = alias_list[x]
+        #     if not isinstance(alias, str): continue
+        #     if len(alias) > 0:
+        #         spl = alias.split(';')
+        #         for y in spl:
+        #             if y not in alias_finder.keys(): alias_finder[y] = x
+        #             elif y not in duplicates: duplicates += [y]
 
         for x in duplicates: del alias_finder[x]
         for k in alias_finder.keys(): name_finder[k] = taxa + ':' + id_list[alias_finder[k]]
