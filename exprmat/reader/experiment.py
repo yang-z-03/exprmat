@@ -18,6 +18,7 @@ for sample-level QC is not performed yet.
 import scanpy as sc
 import anndata as ad
 import mudata as mu
+import pandas as pd
 
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
@@ -26,17 +27,25 @@ from exprmat.ansi import warning, info, error
 
 class experiment:
     
-    def __init__(self, meta : metadata, mudata = None):
+    def __init__(self, meta : metadata, mudata = None, modalities = {}):
 
         # TODO: we support rna only at present.
         table = meta.dataframe.to_dict(orient = 'list')
         self.mudata = mudata
+        self.modalities = modalities
         self.metadata = meta
 
         if self.mudata is not None:
+            if len(self.modalities) == 0:
+                warning('samples are not dumped in the experiment directory.')
+            return
+        
+        if len(self.modalities) > 0:
+            if self.mudata is None:
+                warning('integrated mudata object is not generated.')
             return
 
-        modalities = {}
+        self.modalities = {}
         for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
             table['location'], table['sample'], table['batch'], table['group'],
             table['modality'], table['taxa']
@@ -45,25 +54,99 @@ class experiment:
             info(f'reading sample {i_sample} [{i_mod}] ...')
 
             if i_mod == 'rna':
-                if not 'rna' in modalities.keys(): modalities['rna'] = {}
-                modalities['rna'][i_sample] = read_mtx_rna(
+                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
+                self.modalities['rna'][i_sample] = read_mtx_rna(
                     src = i_loc, prefix = '', metadata = meta, sample = i_sample,
                     raw = False, default_taxa = i_taxa
                 )
             
             else: warning(f'sample {i_sample} have no supported modalities')
 
+        # construct variable name table: note that this variable table represent the
+        # all available set, and should be a superset of the merged table.
+        
+        self.build_variables()
+
+        pass
+
+
+    def build_variables(self):
+
+        self.variables = {}
+
+        if len(self.modalities) == 0 and self.mudata is not None:
+            
+            if 'rna' in self.mudata.mod.keys():
+                self.variables['rna'] = self.mudata['rna'].var
+            
+            return
+
+        if 'rna' in self.modalities.keys():
+            genes = []
+            for sample in self.modalities['rna'].keys():
+                genes = set(list(genes) + self.modalities['rna'][sample].var_names.tolist())
+            
+            species_db = {}
+            columns = {}
+            n_genes = 0
+
+            for gene in genes:
+                if not gene.startswith('rna:'):
+                    error('gene name within rna modality does not start with prefix `rna:`')
+                modal, taxa, ugene = gene.split(':')
+                if not taxa in species_db.keys(): species_db[taxa] = get_genome(taxa)
+
+                gene_meta = species_db[taxa].loc[ugene]
+                for k in gene_meta.index.tolist():
+                    if k in columns.keys(): columns[k].append(gene_meta[k])
+                    elif n_genes == 0: columns[k] = [gene_meta[k]]
+                    else: columns[k] = [None] * n_genes + [gene_meta[k]]
+                
+                n_genes += 1
+            
+            self.variables['rna'] = pd.DataFrame(columns)
+            self.variables['rna'].index = genes
+        
+        pass
+    
+
+    def merge(self):
+        '''
+        Merge the separate modalities, and generate the integrated dataset.
+        Note that this integration is merely concatenating the raw matrices without
+        any batch correction. You should run batch correction if needed using the
+        routines elsewhere. (or the general interface ``integrate(...)``).
+        '''
+
         # the var names are self-interpretable, and we will merge the samples
         # and throw away original column metadata. for atac-seq experiments, however,
         # the original var metadata is useful, we should store them and append
         # to the merged dataset later.
 
-        if 'rna' in modalities.keys():
+        merged = {}
+
+        if 'rna' in self.modalities.keys():
+
+            filtered = {}
+            for rnak in self.modalities['rna'].keys():
+                if 'qc' not in self.modalities['rna'][rnak].obs.columns: 
+                    error(f'sample [{rnak}] have not been qc yet.')
+                if 'qc' not in self.modalities['rna'][rnak].var.columns: 
+                    error(f'sample [{rnak}] have not been qc yet.')
+                
+                filtered[rnak] = ad.AnnData(
+                    self.modalities['rna'][rnak].X,
+                    obs = self.modalities['rna'][rnak].obs,
+                    var = self.modalities['rna'][rnak].var
+                )[
+                    self.modalities['rna'][rnak].obs['qc'],
+                    self.modalities['rna'][rnak].var['qc']
+                ].copy()
 
             # merge rna experiment.
-            modalities['rna'] = ad.concat(
-                modalities['rna'], axis = 'obs', 
-                join = 'outer', label = 'sample'
+            merged['rna'] = ad.concat(
+                filtered, axis = 'obs', 
+                join = 'inner', label = 'sample'
             )
 
             # retrieve the corresponding gene info according to the universal 
@@ -71,7 +154,7 @@ class experiment:
 
             species_db = {}
             columns = {}
-            gene_names = modalities['rna'].var_names.tolist()
+            gene_names = merged['rna'].var_names.tolist()
 
             n_genes = 0
             for gene in gene_names:
@@ -89,43 +172,72 @@ class experiment:
                 n_genes += 1
             
             for metakey in columns.keys():
-                assert len(columns[metakey]) == modalities['rna'].n_vars
-                modalities['rna'].var[metakey] = columns[metakey]
+                assert len(columns[metakey]) == merged['rna'].n_vars
+                merged['rna'].var[metakey] = columns[metakey]
         
-        if len(modalities) > 0:
-            mdata = mu.MuData(modalities)
+        if len(merged) > 0:
+            mdata = mu.MuData(merged)
             mdata.push_obs()
             mdata.push_var()
             self.mudata = mdata
+
         else: self.mudata = None
-                
-        pass
-    
+
+
+    def rna_log_normalize(self):
+        assert 'rna' in self.mudata.mod.keys()
+        from exprmat.preprocessing import log_transform, normalize
+        normalize(self)
+
 
     def save(self, fdir):
 
         import os
-        if self.mudata is None:
-            error('experiment is loaded with failure.')
-        else: 
+
+        os.makedirs(fdir, exist_ok = True)
+        self.metadata.save(os.path.join(fdir, 'metadata.tsv'))
+
+        if self.mudata is not None:
             self.mudata.write_h5mu(os.path.join(fdir, 'integrated.h5mu'))
-            self.metadata.save(os.path.join(fdir, 'metadata.tsv'))
+        
+        if self.modalities is not None:
+            for key in self.modalities.keys():
+                os.makedirs(os.path.join(fdir, key), exist_ok = True)
+                for sample in self.modalities[key].keys():
+                    
+                    # save individual samples
+                    self.modalities[key][sample].write_h5ad(
+                        os.path.join(fdir, key, f'{sample}.h5ad')
+                    )
     
     pass
 
 
-def load_experiment(direc):
+def load_experiment(direc, load_samples = True):
     
     import os
-    if not os.path.exists(os.path.join(direc, 'integrated.h5mu')):
-        error('failed to load experiment. [integrated.h5mu] file not found.')
     if not os.path.exists(os.path.join(direc, 'metadata.tsv')):
         error('failed to load experiment. [metadata.tsv] file not found.')
     
-    return experiment(
-        meta = load_metadata(os.path.join(direc, 'metadata.tsv')),
-        mudata = mu.read_h5mu(os.path.join(direc, 'integrated.h5mu'))
-    )
+    # read individual modality and sample
+    meta = load_metadata(os.path.join(direc, 'metadata.tsv'))
+
+    modalities = {}
+    if load_samples:
+        for modal, samp in zip(meta.dataframe['modality'], meta.dataframe['sample']):
+            attempt = os.path.join(direc, modal, samp + '.h5ad')
+            if os.path.exists(attempt):
+                if modal not in modalities.keys(): modalities[modal] = {}
+                modalities[modal][samp] = sc.read_h5ad(attempt)
+            else: warning(f'sample dump [{modal}/{samp}] missing.')
+
+    mdata = None
+    if os.path.exists(os.path.join(direc, 'integrated.h5mu')):
+        mdata = mu.read_h5mu(os.path.join(direc, 'integrated.h5mu'))
+
+    expr = experiment(meta = meta, mudata = mdata, modalities = modalities)
+    expr.build_variables()
+    return expr
 
 
 class time_series_experiment(experiment):
