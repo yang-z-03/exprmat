@@ -1,17 +1,15 @@
 
 import numpy as np
-import scipy
 from sklearn.decomposition import TruncatedSVD, PCA
-from exprmat.preprocessing.sparse import sparse_var, sparse_multiply_row
 
 
 def pca(
-        S, cell_ids = [], n_comp = 50, keep_sparse = False, 
-        random_state = 42, svd_solver = 'arpack'
-    ):
+    S, cell_ids = [], n_comp = 50, keep_sparse = False, 
+    random_state = 42, svd_solver = 'arpack'
+):
     '''
     Run PCA on the scaled matrix S. If keep_sparse is set to True, truncated SVD is
-    used to preserve the sparsity in calculation.
+    used to preserve the sparsitdy in calculation.
 
     Returns
     ------------

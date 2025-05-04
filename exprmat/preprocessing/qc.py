@@ -54,8 +54,9 @@ def is_outliers(x, method = 'mads', n = 5):
     return (x > tresholds[0]) & (x < tresholds[1])
 
 
-def qc(
-    experiment : experiment | anndata.AnnData,
+def rna_qc(
+    adata: anndata.AnnData,
+    sample: str = '?',
 
     # mitochondrial quality filter
     mt_seqid = 'MT',
@@ -71,7 +72,7 @@ def qc(
     doublet_method = 'scrublet',
 
     # low depth quality filter
-    min_cells = 20,
+    min_cells = 3,
     min_genes = 300
 ):
     '''
@@ -97,89 +98,80 @@ def qc(
     the ``ribo_genes`` array to proper ENSEMBL IDs or else the program will guess from the names.
     '''
     
-    for key in experiment.modalities.keys():
+    # manual calculations of ribosomal and mitochondrial genes
+    mask_mito = [x == mt_seqid for x in adata.var['.seqid'].tolist()]
+    mask_ribo = [False if isinstance(x, float) else \
+                    x.lower().startswith('rps') or x.lower().startswith('rpl') \
+                    for x in adata.var['gene'].tolist()] if ribo_genes is None else \
+                [x in ribo_genes for x in adata.var['gene'].tolist()]
 
-        if key == 'rna':
+    import numpy as np
+    info(f'found {np.sum(np.array(mask_mito))} mitochondrial genes (expected 13)')
+    info(f'found {np.sum(np.array(mask_ribo))} ribosomal genes')
 
-            # manual calculations of ribosomal and mitochondrial genes
-            mask_mito = [x == mt_seqid for x in experiment.variables['rna']['.seqid'].tolist()]
-            mask_ribo = [False if isinstance(x, float) else \
-                            x.lower().startswith('rps') or x.lower().startswith('rpl') \
-                            for x in experiment.variables['rna']['gene'].tolist()] if ribo_genes is None else \
-                        [x in ribo_genes for x in experiment.variables['rna']['gene'].tolist()]
+    print(f'quality controlling sample [{sample}] ...')
+    print(f'raw dataset contains {adata.n_obs} cells, {adata.n_vars} genes')
 
-            import numpy as np
-            info(f'found {np.sum(np.array(mask_mito))} mitochondrial genes (expected 13)')
-            info(f'found {np.sum(np.array(mask_ribo))} ribosomal genes')
+    # quality control rna seq.
+    adata.var['n.umi'] = np.sum(adata.X, axis = 0).tolist()[0]
+    adata.obs['n.umi'] = np.sum(adata.X, axis = 1).transpose().tolist()[0]
+    adata.var['n.cells'] = np.sum(adata.X > 0, axis = 0).tolist()[0]
+    adata.obs['n.genes'] = np.sum(adata.X > 0, axis = 1).transpose().tolist()[0]
+    adata.obs['n.mito'] = np.sum(adata.X[:, mask_mito], axis = 1).transpose().tolist()[0]
+    adata.obs['n.ribo'] = np.sum(adata.X[:, mask_ribo], axis = 1).transpose().tolist()[0]
+    adata.obs['pct.mito'] = adata.obs['n.mito'] / adata.obs['n.umi']
+    adata.obs['pct.ribo'] = adata.obs['n.ribo'] / adata.obs['n.umi']
 
-            for sample in experiment.modalities[key]:
-                adata = experiment.modalities[key][sample]
+    # detect outliers
+    if outlier_mode == 'mads':
+        umi_lower, umi_upper = mads(adata.obs['n.umi'].to_numpy(), nmads = outlier_n)
+    elif outlier_mode == 'tukey':
+        umi_lower, umi_upper = tukey(adata.obs['n.umi'].to_numpy(), n = outlier_n)
+    else: umi_lower, umi_upper = 200, 100000
 
-                print(f'quality controlling sample [{sample}] ...')
-                print(f'raw dataset contains {adata.n_obs} cells, {adata.n_vars} genes')
-
-                # quality control rna seq.
-                adata.var['n.umi'] = np.sum(adata.X, axis = 0).tolist()[0]
-                adata.obs['n.umi'] = np.sum(adata.X, axis = 1).transpose().tolist()[0]
-                adata.var['n.cells'] = np.sum(adata.X > 0, axis = 0).tolist()[0]
-                adata.obs['n.genes'] = np.sum(adata.X > 0, axis = 1).transpose().tolist()[0]
-                adata.obs['n.mito'] = np.sum(adata.X[:, mask_mito], axis = 1).transpose().tolist()[0]
-                adata.obs['n.ribo'] = np.sum(adata.X[:, mask_ribo], axis = 1).transpose().tolist()[0]
-                adata.obs['pct.mito'] = adata.obs['n.mito'] / adata.obs['n.umi']
-                adata.obs['pct.ribo'] = adata.obs['n.ribo'] / adata.obs['n.umi']
-
-                # detect outliers
-                if outlier_mode == 'mads':
-                    umi_lower, umi_upper = mads(adata.obs['n.umi'].to_numpy(), nmads = outlier_n)
-                elif outlier_mode == 'tukey':
-                    umi_lower, umi_upper = tukey(adata.obs['n.umi'].to_numpy(), n = outlier_n)
-                else: umi_lower, umi_upper = 200, 100000
-
-                f_obs = \
-                    (adata.obs['n.umi'] <= umi_upper) & \
-                    (adata.obs['pct.mito'] < mt_percent) & \
-                    (adata.obs['n.umi'] >= umi_lower) & \
-                    (adata.obs['n.genes'] >= min_genes)
-                
-                if ribo_percent is not None:
-                    f_obs = f_obs & (adata.obs['pct.ribo'] < ribo_percent)
-
-                f_var = adata.var['n.cells'] >= min_cells
-
-                # doublet detection using the filtered expression matrix.
-                subset = adata[f_obs, f_var].copy()
-                subset.obs['qc'] = True
-                
-                if doublet_method == 'scrublet':
-                    scrublet_init(subset, random_state = 42)
-                    scrublet(subset)
-                
-                adata.obs['filter'] = f_obs
-                adata.obs['score.doublet'] = 0.0
-                adata.obs['score.doublet.se'] = 0.0
-                adata.obs['is.doublet'] = False
-
-                adata.obs.loc[subset.obs['score.doublet'].index, 'score.doublet'] = \
-                    subset.obs['score.doublet']
-                adata.obs.loc[subset.obs['score.doublet.se'].index, 'score.doublet.se'] = \
-                    subset.obs['score.doublet.se']
-                if 'is.doublet' in subset.obs.columns.tolist():
-                    adata.obs.loc[subset.obs['score.doublet'].index, 'is.doublet'] = \
-                        subset.obs['is.doublet']
-                
-                adata.uns['scrublet'] = subset.uns['scrublet']
-                adata.obs['qc'] = adata.obs['filter']
-                adata.var['qc'] = f_var
-
-                if 'is.doublet' in subset.obs.columns.tolist(): 
-                    adata.obs['qc'] = adata.obs['qc'] & (~adata.obs['is.doublet'])
-                print(f'filtered dataset contains {(adata.obs["qc"].to_numpy().sum())} cells, ' +
-                      f'{adata.var["qc"].to_numpy().sum()} genes')
-                del subset
-        
-        else: warning(f'modality [{key}] is not supported yet.')
+    f_obs = \
+        (adata.obs['n.umi'] <= umi_upper) & \
+        (adata.obs['pct.mito'] < mt_percent) & \
+        (adata.obs['n.umi'] >= umi_lower) & \
+        (adata.obs['n.genes'] >= min_genes)
     
-    return experiment
+    if ribo_percent is not None:
+        f_obs = f_obs & (adata.obs['pct.ribo'] < ribo_percent)
+
+    f_var = adata.var['n.cells'] >= min_cells
+
+    # doublet detection using the filtered expression matrix.
+    subset = adata[f_obs, f_var].copy()
+    subset.obs['qc'] = True
+    
+    if doublet_method == 'scrublet':
+        scrublet_init(subset, random_state = 42)
+        scrublet(subset)
+    
+    adata.obs['filter'] = f_obs
+    adata.obs['score.doublet'] = 0.0
+    adata.obs['score.doublet.se'] = 0.0
+    adata.obs['is.doublet'] = False
+
+    adata.obs.loc[subset.obs['score.doublet'].index, 'score.doublet'] = \
+        subset.obs['score.doublet']
+    adata.obs.loc[subset.obs['score.doublet.se'].index, 'score.doublet.se'] = \
+        subset.obs['score.doublet.se']
+    if 'is.doublet' in subset.obs.columns.tolist():
+        adata.obs.loc[subset.obs['score.doublet'].index, 'is.doublet'] = \
+            subset.obs['is.doublet']
+    
+    adata.uns['scrublet'] = subset.uns['scrublet']
+    adata.obs['qc'] = adata.obs['filter']
+    adata.var['qc'] = f_var
+
+    if 'is.doublet' in subset.obs.columns.tolist(): 
+        adata.obs['qc'] = adata.obs['qc'] & (~adata.obs['is.doublet'])
+    print(f'filtered dataset contains {(adata.obs["qc"].to_numpy().sum())} cells, ' +
+          f'{adata.var["qc"].to_numpy().sum()} genes')
+    del subset
+        
+    return adata
 
 
 def filter_cells(

@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name                 = 'exprmat',
-    version              = '0.1.0',
+    version              = '0.1.2',
     description          = 'routines to process expression matrices',
     author               = 'Zheng Yang',
     author_email         = 'xornent@outlook.com',
@@ -19,7 +19,17 @@ setup(
         'numpy',
         'matplotlib',
         'seaborn',
-        'torch >= 2.0'
+        'torch >= 2.0',
+        'annoy',
+        'scikit-image',
+        'scikit-misc',
+        'igraph',
+        'bbknn',
+        'scanorama',
+        'harmonypy',
+        'pydme',
+        'datashader',
+        'fa2_modified'
     ],
     include_package_data = True,
     zip_safe             = False

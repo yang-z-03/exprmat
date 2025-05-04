@@ -110,7 +110,7 @@ class experiment:
         pass
     
 
-    def merge(self):
+    def merge(self, join = 'outer'):
         '''
         Merge the separate modalities, and generate the integrated dataset.
         Note that this integration is merely concatenating the raw matrices without
@@ -146,7 +146,7 @@ class experiment:
             # merge rna experiment.
             merged['rna'] = ad.concat(
                 filtered, axis = 'obs', 
-                join = 'inner', label = 'sample'
+                join = join, label = 'sample'
             )
 
             # retrieve the corresponding gene info according to the universal 
@@ -182,6 +182,47 @@ class experiment:
             self.mudata = mdata
 
         else: self.mudata = None
+
+
+    def do_for(self, samples = None, func, **kwargs):
+        
+        for mod, samp in zip(
+            self.metadata.dataframe['modality'].tolist(),
+            self.metadata.dataframe['sample'].tolist()
+        ):
+            do = False
+            if samples is None: do = True
+            if isinstance(samples, list):
+                if samp in samples: do = True
+
+            if do:
+                
+                if self.modalities is None:
+                    warning(f'experiment do not load any samples.')
+                    return
+                
+                if not mod in self.modalities.keys():
+                    warning(f'{mod} does not loaded in the modalities key.')
+                    continue
+                if not samp in self.modalities[mod].keys():
+                    warning(f'{samp} not loaded in the {mod} modality.')
+                    continue
+
+                func(self.modalities[mod][samp], **kwargs)
+
+
+    def do_for_rna(self, func, **kwargs):
+        self.do_for(self.all_rna_samples(), func, **kwargs)
+
+    
+    def all_samples(self):
+        return self.metadata.dataframe['sample'].tolist()
+    
+
+    def all_rna_samples(self):
+        return self.metadata.dataframe[
+            self.metadata.dataframe['modality'] == 'rna', :
+        ]['sample'].tolist()
 
 
     def rna_log_normalize(self):
