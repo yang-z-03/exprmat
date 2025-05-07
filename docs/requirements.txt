@@ -6,3 +6,7 @@ mudata
 pandas
 matplotlib
 seaborn
+annoy
+scikit-image
+scikit-misc
+igraph
