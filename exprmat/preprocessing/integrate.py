@@ -7,7 +7,7 @@ from exprmat.ansi import error, warning
 def bbknn(  # noqa: PLR0913
     adata: ad.AnnData,
     *,
-    batch_key: str = "batch",
+    key: str = "batch",
     use_rep: str = "pca",
     approx: bool = True,
     use_annoy: bool = True,
@@ -37,11 +37,14 @@ def bbknn(  # noqa: PLR0913
     Parameters
     -----------
     adata
-        Needs the PCA computed and stored in `adata.obsm["X_pca"]`.
-    batch_key
+        Needs the PCA computed and stored in `adata.obsm["pca"]`.
+    
+    key
         `adata.obs` column name discriminating between your batches.
+    
     use_rep
         The dimensionality reduction in `.obsm` to use for neighbour detection. Defaults to PCA.
+    
     approx
         If `True`, use approximate neighbour finding - annoy or PyNNDescent. This results in a 
         quicker run time for large datasets while also potentially increasing the degree of batch correction.
@@ -108,7 +111,7 @@ def bbknn(  # noqa: PLR0913
     
     return bbknn(
         adata = adata,
-        batch_key = batch_key,
+        batch_key = key,
         use_rep = use_rep,
         approx = approx,
         use_annoy = use_annoy,

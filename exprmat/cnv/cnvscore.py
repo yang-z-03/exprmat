@@ -6,7 +6,7 @@ import numpy as np
 import scipy.sparse as sp
 from anndata import AnnData
 
-from exprmat.utils import choose_rep
+from exprmat.utils import choose_representation as choose_rep
 from exprmat.ansi import warning, info, error
 
 

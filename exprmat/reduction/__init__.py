@@ -19,7 +19,7 @@ def run_pca(
     )
 
     adata.obsm[key_added] = emb
-    adata.varm[key_added] = comps
+    adata.varm[key_added] = comps.T
     adata.uns[key_added] = {
         'variance': variance,
         'pct.variance': pct_variance,
@@ -34,19 +34,21 @@ def run_knn(
     adata, *, use_rep = 'pca', n_comps = None,
     n_neighbors: int = 30, knn: bool = True, method = "umap",
     transformer = None, metric = "euclidean", metric_kwds = {},
-    random_state = 0, key_added = 'neighbors'
+    random_state = 0, key_added = 'neighbors', n_jobs = -1
 ):
     emb = choose_representation(adata, use_rep = use_rep, n_pcs = n_comps)
     knn_indices, knn_dist, dist, conn, connected_comp, n_conn_comp = compute_neighbors(
         emb, n_neighbors = n_neighbors, knn = knn, method = method,
         transformer = transformer, metric = metric, metric_kwds = metric_kwds,
-        random_state = random_state
+        random_state = random_state, n_jobs = n_jobs
     )
 
     adata.uns[key_added] = {
         'connectivities_key': 'connectivities' if key_added == 'neighbors' else 'connectivities.' + key_added,
         'neighbors_key': 'neighbors' if key_added == 'neighbors' else 'neighbors.' + key_added,
         'distances_key': 'distances' if key_added == 'neighbors' else 'distances.' + key_added,
+        'knn_key': 'knn' if key_added == 'neighbors' else 'knn.' + key_added,
+        'knn_distances_key': 'knn.d' if key_added == 'neighbors' else 'knn.d.' + key_added,
         'metric': metric,
         'metric_kwds': metric_kwds,
         'random_state': random_state,
@@ -59,6 +61,8 @@ def run_knn(
 
     adata.obsp[adata.uns[key_added]['connectivities_key']] = conn
     adata.obsp[adata.uns[key_added]['distances_key']] = dist
+    adata.obsm[adata.uns[key_added]['knn_key']] = knn_indices
+    adata.obsm[adata.uns[key_added]['knn_distances_key']] = knn_dist
     return
 
 

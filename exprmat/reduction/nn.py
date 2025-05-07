@@ -3,11 +3,9 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import scipy
 import scipy.sparse
-import numba
-from numba import njit
 
 from exprmat.ansi import warning, error, info
-from exprmat.utils import choose_rep
+from exprmat.utils import choose_representation, is_constant
 
 
 def knn_graph(
@@ -81,7 +79,7 @@ def adjacency_matrix(edges, n_nodes):
 def compute_neighbors(
     embedding, n_neighbors: int = 30, *, knn: bool = True, method = "umap",
     transformer = None, metric = "euclidean", metric_kwds = {},
-    random_state = 0,
+    random_state = 0, n_jobs = -1
 ):
     
     n_cell, n_dim = embedding.shape
@@ -95,7 +93,7 @@ def compute_neighbors(
     
     # default keyword arguments when `transformer` is not an instance
     method, transformer, shortcut = select_transformer(
-        n_cell, transformer, knn=knn, kwds = {
+        n_cell, method = method,  transformer = transformer, knn = knn, n_jobs = n_jobs, kwds = {
             'n_neighbors': n_neighbors,
             'metric': metric,
             'metric_params': metric_kwds,
@@ -338,37 +336,6 @@ def index_distance_matrix_f(D: scipy.sparse.csr_matrix):
         D.indices.reshape(n_obs, n_neighbors),
         D.data.reshape(n_obs, n_neighbors),
     )
-
-
-def is_constant(a: scipy.sparse.csr_matrix, axis = None):
-
-    if axis is None:
-        if len(a.data) == np.multiply(*a.shape):
-            return is_constant(a.data)
-        else: return (a.data == 0).all()
-
-    if axis == 1: 
-        return is_constant_csr_rows(a.data, a.indptr, a.shape)
-    elif axis == 0:
-        a = a.T.tocsr()
-        return is_constant_csr_rows(a.data, a.indptr, a.shape)
-
-
-@njit
-def is_constant_csr_rows(data, indptr, shape: tuple[int, int]):
-    
-    n = len(indptr) - 1
-    result = np.ones(n, dtype = np.bool_)
-    for i in numba.prange(n):
-        start = indptr[i]
-        stop = indptr[i + 1]
-        val = data[start] if stop - start == shape[1] else 0
-        for j in range(start, stop):
-            if data[j] != val:
-                result[i] = False
-                break
-    
-    return result
 
 
 def gauss_connectivity(distances, n_neighbors: int, *, knn: bool):

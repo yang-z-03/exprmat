@@ -175,15 +175,15 @@ def scrublet(
         total_counts = adata.obs['n.umi']
     )
     
-    if 'hvg.ff' in adata.var.keys():
-        warning('[!] use existing slot `hvg.ff` as gene filter') 
+    if 'ff.hvg' in adata.var.keys():
+        warning('[!] use existing slot `ff.hvg` as gene filter') 
     else: highly_variable(
-        adata, adata.uns['scrublet']['counts'], 'hvg.ff',
+        adata, counts = adata.uns['scrublet']['counts'], dest = 'ff',
         method = 'ff', min_counts = min_counts, min_cells = min_cells, 
         min_vscore_pct = min_gene_variability_pct
     )
     
-    f_counts = expr[bool_to_index(adata.obs['qc']), :][:, bool_to_index(adata.var['hvg.ff'])]
+    f_counts = expr[bool_to_index(adata.obs['qc']), :][:, bool_to_index(adata.var['ff.hvg'])]
     subset = ad.AnnData(f_counts)
     subset.obs['n.umi'] = adata.obs['n.umi']
     adata.uns['hvg.subset'] = subset

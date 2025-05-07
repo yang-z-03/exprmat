@@ -422,7 +422,7 @@ def materialize_as_ndarray(a):
 
 
 def highly_variable_nb(
-    X, var, *, cutoff, n_bins: int = 20,
+    X, var, *, n_bins: int = 20,
 ) -> pd.DataFrame:
     '''
     Highly variable gene filter in legacy version of seurat. 
@@ -454,12 +454,12 @@ def highly_variable_nb(
 
 
 def highly_variable_nb_log(
-    X, var, *, cutoff, n_bins: int = 20,
+    X, var, *, n_bins: int = 20,
 ) -> pd.DataFrame:
     '''
     Highly variable gene filter in legacy version of seurat. 
     This method is based on binned dispersion method. 
-    This requires input matrix be raw counts X, as dispersions are fitted on UMI.
+    This requires input matrix be log normalized counts.
     '''
 
     mean, var = materialize_as_ndarray(mean_variance(X))

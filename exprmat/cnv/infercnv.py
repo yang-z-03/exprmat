@@ -127,7 +127,7 @@ def infercnv(
     valid_annot_adata = adata[:, ~ var_mask]
     reference = get_reference_cells(adata, reference_key, reference_cat, reference)[:, ~ var_mask]
 
-    expr = valid_annot_adata.X if layer is 'X' else valid_annot_adata.layers[layer]
+    expr = valid_annot_adata.X if layer == 'X' else valid_annot_adata.layers[layer]
     if scipy.sparse.issparse(expr):
         expr = expr.tocsr()
 
@@ -341,7 +341,7 @@ def running_mean_by_chr(
         and genomic position. This is a row in the plotted chromosome CNV matrix.
     '''
 
-    chromosomes = natural_sort([x for x in var['chromosome'].unique() if x.startswith('chr') and x != 'chrM'])
+    chromosomes = natural_sort([x for x in var['.seqid'].unique() if x != 'MT'])
     running_means = [
         running_mean_chr(
             chr, expr, var, window_size, step, calculate_gene_values

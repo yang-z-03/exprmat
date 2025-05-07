@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name                 = 'exprmat',
-    version              = '0.1.2',
+    version              = '0.1.3',
     description          = 'routines to process expression matrices',
     author               = 'Zheng Yang',
     author_email         = 'xornent@outlook.com',
@@ -27,7 +27,7 @@ setup(
         'bbknn',
         'scanorama',
         'harmonypy',
-        'pydme',
+        'pymde',
         'datashader',
         'fa2_modified'
     ],
