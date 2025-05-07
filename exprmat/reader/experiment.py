@@ -327,15 +327,20 @@ class experiment:
 
         if isinstance(run_on_samples, bool) and run_on_samples:
             figures = self.do_for(self.all_rna_samples(), func, **kwargs)
+            for f in figures.values(): f.tight_layout()
             return figures
+        
         elif isinstance(run_on_samples, list):
             figures = self.do_for(list(set(self.all_rna_samples()) & set(run_on_samples)), func, **kwargs)
+            for f in figures.values(): f.tight_layout()
             return figures
+        
         else:
             assert 'rna' in self.mudata.mod.keys()
 
             if not run_on_splits:
                 figure = func(self.mudata['rna'], 'integrated', **kwargs)
+                figure.tight_layout()
                 return figure
 
             else:
@@ -348,10 +353,13 @@ class experiment:
 
                     results[split_selection[feat_id]] = func(
                         self.mudata['rna'][
-                            self.mudata['rna'].obs[split_key] == split_selection[feat_id],:], 
+                            self.mudata['rna'].obs[split_key] == split_selection[feat_id],:].copy(),
+                        # copy the data to silence the implicit modification warning on views. 
                         split_selection[feat_id], 
                         **kwargs
                     )
+
+                    results[split_selection[feat_id]].tight_layout()
                 
                 return results
 
@@ -594,6 +602,25 @@ class experiment:
 
 
     @staticmethod
+    def rna_leiden_subcluster(
+        adata, sample_name, cluster_key, clusters, 
+        restrict_to = None, key_added = 'leiden', **kwargs
+    ):
+        from exprmat.clustering import run_leiden
+        run_leiden(adata, restrict_to = (cluster_key, clusters), key_added = '.leiden.temp', **kwargs)
+        temp = adata.obs['.leiden.temp'].tolist()
+        orig = adata.obs[cluster_key].tolist()
+        merge = [x if x not in clusters else y.replace(',', '.') for x, y in zip(orig, temp)]
+        del adata.obs['.leiden.temp']
+        adata.obs[key_added] = merge
+
+        # for all categorical types:
+        adata.obs[key_added] = \
+            adata.obs[key_added].astype('category')
+        print(adata.obs[key_added].value_counts())
+
+
+    @staticmethod
     def rna_umap(adata, sample_name, **kwargs):
         from exprmat.reduction import run_umap
         run_umap(adata, **kwargs)
@@ -664,18 +691,51 @@ class experiment:
 
     @staticmethod
     def rna_plot_proportion(
-        adata, sample_name, major, minor, 
-        normalize = 'columns', figsize = (5,3), stacked = False
+        adata, sample_name, major, minor, plot = 'bar', cmap = 'Turbo',
+        normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
     ):
         if normalize == 'major': normalize = 'columns'
         if normalize == 'minor': normalize = 'index'
         tmp = pd.crosstab(adata.obs[major], adata.obs[minor], normalize = normalize)
-        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False)
-        fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
-        fig.set_ylabel(f'Proportion ({minor})')
-        fig.set_xlabel(major)
-        fig.figure.tight_layout()
-        return fig.figure
+
+        def get_palette(n):
+            if n + '.colors' in adata.uns.keys():
+                return adata.uns[n + '.colors']
+
+        if plot == 'bar':
+            fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False)
+            fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
+            fig.set_ylabel(f'Proportion ({minor})')
+            fig.set_xlabel(major)
+            fig.figure.tight_layout()
+            return fig.figure
+        
+        elif plot == 'pie':
+            fig = tmp.plot.pie(
+                subplots = True,
+                radius = 0.8, autopct = '%1.1f%%'
+                # colors = get_palette(major)
+            )
+            for x in fig: x.get_legend().remove()
+            fig[0].figure.tight_layout()
+            fig[0].figure.set_figwidth(figsize[0])
+            fig[0].figure.set_figheight(figsize[1])
+            return fig[0].figure
+        
+        elif plot == 'donut':
+            fig = tmp.plot.pie(
+                subplots = True, 
+                wedgeprops = dict(width = wedge),
+                radius = 0.8, autopct = '%1.1f%%',
+                colors = get_palette(major)
+            )
+            for x in fig: x.get_legend().remove()
+            fig[0].figure.tight_layout()
+            fig[0].figure.set_figwidth(figsize[0])
+            fig[0].figure.set_figheight(figsize[1])
+            return fig[0].figure
+        
+        else: error('unsupported plotting type.')
 
 
     @staticmethod
@@ -694,15 +754,15 @@ class experiment:
         n_features = len(groups)
         nrows = n_features // ncols
         if n_features % ncols != 0: nrows += 1
-        fig, axes = plt.subplots(nrows, ncols)
-
+        fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
+        
         for feat_id in range(len(groups)):
 
             if len(axes.shape) == 2:
                 embedding(
                     adata[adata.obs[grouping_key] == groups[feat_id],:], 
                     basis, color = kde,
-                    ax = axes[feat_id // ncols, feat_id % ncols],
+                    ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
                     sample_name = sample_name, title = groups[feat_id], **kwargs
                 )
 
@@ -710,7 +770,7 @@ class experiment:
                 embedding(
                     adata[adata.obs[grouping_key] == groups[feat_id],:], 
                     basis, color = kde,
-                    ax = axes[feat_id],
+                    ax = axes[feat_id], dpi = dpi,
                     sample_name = sample_name, title = groups[feat_id], **kwargs
                 )
         
@@ -755,7 +815,7 @@ class experiment:
     @staticmethod
     def rna_plot_multiple_embedding(
         adata, sample_name, basis, features, ncols, 
-        figsize = (3, 3), **kwargs
+        figsize = (3, 3), dpi = 100, **kwargs
     ):
         from exprmat.reduction.plot import embedding
         import matplotlib.pyplot as plt
@@ -765,7 +825,7 @@ class experiment:
         n_features = len(features)
         nrows = n_features // ncols
         if n_features % ncols != 0: nrows += 1
-        fig, axes = plt.subplots(nrows, ncols)
+        fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
 
         for feat_id in range(len(features)):
 
@@ -773,13 +833,13 @@ class experiment:
                 embedding(
                     adata, basis, color = features[feat_id],
                     ax = axes[feat_id // ncols, feat_id % ncols],
-                    sample_name = sample_name, **kwargs
+                    sample_name = sample_name, dpi = dpi, **kwargs
                 )
 
             elif len(axes.shape) == 1:
                 embedding(
                     adata, basis, color = features[feat_id],
-                    ax = axes[feat_id],
+                    ax = axes[feat_id], dpi = dpi,
                     sample_name = sample_name, **kwargs
                 )
         
@@ -861,6 +921,9 @@ class experiment:
 
     def run_rna_leiden(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, experiment.rna_leiden, **kwargs)
+
+    def run_rna_leiden_subcluster(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, experiment.rna_leiden_subcluster, **kwargs)
 
     def run_rna_umap(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, experiment.rna_umap, **kwargs)

@@ -291,7 +291,8 @@ def embedding(
             adata.uns[f'{color}.colors'] = default_palette
         elif not isinstance(adata.uns[f'{color}.colors'], list):
             adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
-
+        
+        default_palette = adata.uns[f'{color}.colors']
         color_key = dict(zip(
             hue_order,
             adata.uns[f'{color}.colors']
