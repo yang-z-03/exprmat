@@ -612,6 +612,7 @@ class experiment:
         orig = adata.obs[cluster_key].tolist()
         merge = [x if x not in clusters else y.replace(',', '.') for x, y in zip(orig, temp)]
         del adata.obs['.leiden.temp']
+        del adata.uns['.leiden.temp']
         adata.obs[key_added] = merge
 
         # for all categorical types:
