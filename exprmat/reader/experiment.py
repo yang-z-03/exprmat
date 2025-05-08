@@ -24,7 +24,7 @@ import os
 
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
-from exprmat.reader.matcher import read_mtx_rna
+from exprmat.reader.matcher import read_mtx_rna, read_h5ad_rna, read_table_rna
 from exprmat.ansi import warning, info, error, red, green
 
 
@@ -67,10 +67,31 @@ class experiment:
 
             if i_mod == 'rna':
                 if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
-                self.modalities['rna'][i_sample] = read_mtx_rna(
-                    src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                    raw = False, default_taxa = i_taxa
-                )
+
+                # we automatically infer from the given location names to select
+                # the correct way of loading samples:
+
+                if i_loc.endswith('.tsv.gz') or i_loc.endswith('.csv.gz') or \
+                    i_loc.endswith('.tsv') or i_loc.endswith('.csv'):
+
+                    self.modalities['rna'][i_sample] = read_table_rna(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa
+                    )
+
+                elif i_loc.endswith('.h5') or i_loc.endswith('.h5ad'):
+
+                    self.modalities['rna'][i_sample] = read_h5ad_rna(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa
+                    )
+
+                else:
+                    self.modalities['rna'][i_sample] = read_mtx_rna(
+                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa
+                    )
+                    
                 self.modalities['rna'][i_sample].var = \
                     experiment.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
             

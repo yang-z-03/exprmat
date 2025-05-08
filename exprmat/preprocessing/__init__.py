@@ -104,11 +104,11 @@ def highly_variable(
         adata.var[dest + '.dispersions.norm'] = df['norm.disp']
         if use_bounds:
             adata.var[dest + '.hvg'] = (
-                df['means'] > min_mean & 
-                df['means'] < max_mean & 
-                df['norm.disp'] > min_disp &
-                df['norm.disp'] < max_disp
-            )
+                (df['means'] > min_mean) & 
+                (df['means'] < max_mean) & 
+                (df['norm.disp'] > min_disp) &
+                (df['norm.disp'] < max_disp)
+            ).tolist()
 
         else:
             if n_top_genes > adata.n_vars:
@@ -129,11 +129,11 @@ def highly_variable(
         adata.var[dest + '.dispersions.norm'] = df['norm.disp']
         if use_bounds:
             adata.var[dest + '.hvg'] = (
-                df['means'] > min_mean & 
-                df['means'] < max_mean & 
-                df['norm.disp'] > min_disp &
-                df['norm.disp'] < max_disp
-            )
+                (df['means'] > min_mean) & 
+                (df['means'] < max_mean) & 
+                (df['norm.disp'] > min_disp) &
+                (df['norm.disp'] < max_disp)
+            ).tolist()
 
         else:
             if n_top_genes > adata.n_vars:

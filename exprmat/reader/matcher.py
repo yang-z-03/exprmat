@@ -230,9 +230,116 @@ def read_mtx_rna(
     return final
 
 
+def read_table_rna(
+        src: str, 
+        metadata: metadata, sample: str, raw: bool = False,
+        default_taxa = 'mmu'
+    ):
+    '''
+    Read from compressed or plain text tables.
+
+    Parameters
+    ----------
+
+    src : str
+        The directory to the matrix.
+    
+    metadata : exprmat.reader.metadata.metadata
+        The sample specific metadata table.
+    
+    sample : str
+        The sample name according to the metadata.
+
+    raw : bool
+        Whether this expression matrix is confirmed to be unfiltered one. Unfiltered expression
+        matrix contains all detected beads or droplets, including the empty drops and doublets
+        at higher probabilities. We guess this field by default to see if a sample contains
+        unexpectedly high number of cells.
+    '''
+
+    # try:
+    
+    # in csv/tsv texts, genes are rows and cells are columns.
+    adata = sc.read_text(
+        src, delimiter = '\t', first_column_names = True, dtype = 'float32'
+    ).T
+
+    # except Exception as ex: 
+    #     warning('error occurs when reading matrix files:')
+    #     warning(str(ex))
+    #     return None
+
+    final = match_matrix_rna(
+        adata, metadata, sample, 
+        force_filter = raw, default_taxa = default_taxa
+    )
+    
+    del adata
+    return final
+
+
+def read_h5ad_rna(
+        src: str, 
+        metadata: metadata, sample: str, raw: bool = False,
+        default_taxa = 'mmu'
+    ):
+    '''
+    Read from a given h5ad. This typically occurs when you have to prepare the data yourself
+    from others who give you a complex atlas. The assignment of samples and batches happens
+    within a single h5ad file. Then, you would like to keep nearly all of the metadata you
+    prepared by hand as it is. Only `modality`, `taxa` and `ubc` are generated for you.
+
+    Thus, you must manually supply `sample`, `batch` and `group` yourself. Otherwise the program
+    may not work as usual. It permits multiple samples in one h5ad file.
+
+    Parameters
+    ----------
+
+    src : str
+        The directory to the matrix.
+    
+    prefix : str
+        Prefix before the file name convention.
+    
+    metadata : exprmat.reader.metadata.metadata
+        The sample specific metadata table.
+    
+    sample : str
+        The sample name according to the metadata.
+
+    raw : bool
+        Whether this expression matrix is confirmed to be unfiltered one. Unfiltered expression
+        matrix contains all detected beads or droplets, including the empty drops and doublets
+        at higher probabilities. We guess this field by default to see if a sample contains
+        unexpectedly high number of cells.
+    '''
+
+    # try:
+    
+    adata = sc.read_h5ad(src)
+
+    # except Exception as ex: 
+    #     warning('error occurs when reading matrix files:')
+    #     warning(str(ex))
+    #     return None
+
+    final = match_matrix_rna(
+        adata, metadata, sample, 
+        force_filter = raw, default_taxa = default_taxa,
+        # this switch tells the program not to alter the cell names (keep them
+        # directly to `barcodes`, not adding prefix to them), and keep the
+        # sample, batch, and group columns as is. 
+        do_not_alter_obs_names = True
+    )
+    
+    del adata
+    return final
+
+
 def match_matrix_rna(
         adata, metadata: metadata, sample: str, 
-        force_filter = False, default_taxa = 'mmu'
+        force_filter = False, default_taxa = 'mmu',
+        do_not_alter_obs_names = False
     ):
 
     # if more than 50000 cells in a single matrix, we just believe that it is
@@ -249,8 +356,9 @@ def match_matrix_rna(
     assert len(rows) == 1
     props = rows.iloc[0]
 
-    # append the sample name to the barcode
-    adata_f.obs_names = props['sample'] + ':' + adata_f.obs_names
+    if not do_not_alter_obs_names:
+        # append the sample name to the barcode
+        adata_f.obs_names = props['sample'] + ':' + adata_f.obs_names
 
     # map gene naming
     gname = adata_f.var_names.tolist()
@@ -320,6 +428,8 @@ def match_matrix_rna(
     # attach cell metadata onto the obs slot.
     
     for k in props.index.tolist():
+        if do_not_alter_obs_names:
+            if k in ['sample', 'batch', 'group']: continue
         if k not in ['location']: final.obs[k] = props[k]
     
     final.obs['barcode'] = final.obs_names

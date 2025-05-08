@@ -449,7 +449,7 @@ def highly_variable_nb(
 
     # actually do the normalization
     df["norm.disp"] = (df["dispersions"] - disp_stat["avg"]) / disp_stat["dev"]
-    df.index = var.index
+    # df.index = var.index
     return df
 
 
@@ -477,7 +477,7 @@ def highly_variable_nb_log(
 
     # actually do the normalization
     df["norm.disp"] = (df["dispersions"] - disp_stat["avg"]) / disp_stat["dev"]
-    df.index = var.index
+    # df.index = var.index
     return df
 
 
