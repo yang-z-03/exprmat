@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name                 = 'exprmat',
-    version              = '0.1.4',
+    version              = '0.1.5',
     description          = 'routines to process expression matrices',
     url                  = 'https://github.com/yang-z-03/exprmat',
     author               = 'Zheng Yang',
@@ -34,9 +34,12 @@ setup(
         'pynndescent',
         'gseapy'
     ],
-    include_package_data = True,
+    include_package_data = False,
     package_data         = {
-        'exprmat.data': ['mmu/*.gz', 'hsa/*.gz']
+        'exprmat.data': [
+            'mmu/*.tsv.gz', 
+            'hsa/*.tsv.gz'
+        ]
     },
     zip_safe             = False
 )

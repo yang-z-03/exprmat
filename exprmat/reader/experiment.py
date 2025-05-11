@@ -712,6 +712,21 @@ class experiment:
     
 
     @staticmethod
+    def rna_plot_expression_bar(
+        adata, sample_name, gene, group, split = None,
+        slot = 'X', selected_groups = None, palette = ['red', 'black'], 
+        figsize = (6,3), dpi = 100
+    ):
+        from exprmat.plotting.expression import barplot
+        pl = barplot(
+            adata, gene = gene, slot = slot, group = group,
+            split = split, selected_groups = selected_groups, palette = palette,
+            size = figsize, dpi = dpi
+        )
+        return pl
+    
+
+    @staticmethod
     def rna_plot_proportion(
         adata, sample_name, major, minor, plot = 'bar', cmap = 'Turbo',
         normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
@@ -1009,6 +1024,9 @@ class experiment:
     
     def plot_rna_cnv_matrix(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_cnv_matrix, **kwargs)
+    
+    def plot_rna_expression_bar(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_expression_bar, **kwargs)
     
 
     # accessor wrappers

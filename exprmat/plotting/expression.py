@@ -16,7 +16,7 @@ def barplot(
     colnames = ['logc' + x for x in [gene]]
     cellnames = ['c' + str(i) for i in range(len(adata.obs_names.tolist()))]
     lognorm = find_variable(adata, gene, layer = slot)
-    data = pd.DataFrame(lognorm.toarray())
+    data = pd.DataFrame(lognorm)
     
     data.columns = colnames
     if split == None: data['split'] = 'default.split'
@@ -61,7 +61,36 @@ def barplot(
     axes.set_ylabel(gene)
     axes.set_xticks(selected_groups)
     axes.set_yticks([0.0, 2.5])
-    axes.set_xticklabels(selected_groups, rotation = 45)
+
+    # axes.set_xticklabels(selected_groups, rotation = 45)
+
+    from scipy import stats
+    # here, we will run the wilcox test
+    gene_data = dropzeros.loc[dropzeros['name'] == gene,:]
+    if group != None:
+        xtl = []
+        for ct in selected_groups:
+            cell_data = gene_data.loc[gene_data['row'] == ct,:]
+            groups = [x for _, x in cell_data.groupby(cell_data['split'])]
+            values = [x['logc'].tolist() for x in groups]
+            if len(values) == 2:
+                w = stats.mannwhitneyu(values[0], values[1])
+                xtl += [ct + '\n{:.3f}'.format(w.pvalue)]
+            else: xtl += [ct]
+        
+        axes.set_xticks(selected_groups)
+        axes.set_xticklabels(xtl, rotation = 45)
+    
+    else:
+        groups = [x for _, x in gene_data.groupby(gene_data['split'])]
+        values = [x['logc'].tolist() for x in groups]
+        xtl = 'whole'
+        if len(values) == 2:
+            w = stats.mannwhitneyu(values[0], values[1])
+            xtl = 'whole\n{:.3f}'.format(w.pvalue)
+        axes.set_xticklabels([xtl], rotation = 45)
+        pass
+
     axes.spines[['left', 'top']].set_visible(False)
     axes.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.1f}"))
     fig.tight_layout()

@@ -11,11 +11,11 @@ from exprmat.ansi import error
 
 
 plotting_styles = {
-    'font_name': ['Arial', 'Helvetica', 'Ubuntu', 'Verdana'],
+    'font_name': ['Helvetica Neue LT Std', 'Helvetica', 'Arial', 'Ubuntu', 'Verdana'],
     'backend': 'TkAgg'
 }
 
-def setup_styles(font_name = 'Arial', backend = 'TkAgg'):
+def setup_styles(font_name = 'Helvetica Neue LT Std', backend = 'TkAgg'):
 
     import matplotlib as mpl
     import matplotlib.pyplot as plt
