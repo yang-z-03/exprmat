@@ -20,6 +20,14 @@ exprmat.clustering.spectral module
    :undoc-members:
    :show-inheritance:
 
+exprmat.clustering.rogue module
+----------------------------------
+
+.. automodule:: exprmat.clustering.rogue
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 exprmat.clustering.utils module
 -------------------------------
 
