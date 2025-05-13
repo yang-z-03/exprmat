@@ -153,15 +153,16 @@ def rna_qc(
     adata.obs['score.doublet.se'] = 0.0
     adata.obs['is.doublet'] = False
 
-    adata.obs.loc[subset.obs['score.doublet'].index, 'score.doublet'] = \
-        subset.obs['score.doublet']
-    adata.obs.loc[subset.obs['score.doublet.se'].index, 'score.doublet.se'] = \
-        subset.obs['score.doublet.se']
-    if 'is.doublet' in subset.obs.columns.tolist():
-        adata.obs.loc[subset.obs['score.doublet'].index, 'is.doublet'] = \
-            subset.obs['is.doublet']
-    
-    adata.uns['scrublet'] = subset.uns['scrublet']
+    if doublet_method == 'scrublet':
+        adata.obs.loc[subset.obs['score.doublet'].index, 'score.doublet'] = \
+            subset.obs['score.doublet']
+        adata.obs.loc[subset.obs['score.doublet.se'].index, 'score.doublet.se'] = \
+            subset.obs['score.doublet.se']
+        if 'is.doublet' in subset.obs.columns.tolist():
+            adata.obs.loc[subset.obs['score.doublet'].index, 'is.doublet'] = \
+                subset.obs['is.doublet']
+        adata.uns['scrublet'] = subset.uns['scrublet']
+        
     adata.obs['qc'] = adata.obs['filter']
     adata.var['qc'] = f_var
 

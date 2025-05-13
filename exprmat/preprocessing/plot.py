@@ -58,3 +58,23 @@ def rna_plot_qc_metrics(adata, sample_name, figsize = (10, 2.2)):
     fig.tight_layout(pad = 0.1)
 
     return fig
+
+
+def rna_plot_gene_histogram(adata, sample_name, ax):
+
+    h = ax.hist(adata.obs['n.genes'].tolist(), bins = 100)
+    ax.set_xlabel('Gene detection')
+    ax.set_ylabel('Frequency')
+    ax.set_title(sample_name if len(sample_name) < 20 else sample_name[:17] + ' ..')
+
+    ax.vlines(
+        x = [0, 150], ymin = 0, ymax = 10,
+        colors = 'red', linestyles = 'dotted'
+    )
+
+    ax.vlines(
+        x = [300, 600], ymin = 0, ymax = 10,
+        colors = 'black', linestyles = 'dotted'
+    )
+
+    ax.set_yscale('log')

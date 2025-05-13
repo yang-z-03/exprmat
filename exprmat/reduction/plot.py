@@ -57,17 +57,20 @@ class index_object_handler:
 
 def embedding_atlas(
     adata, basis, color,
+    hue_order = None,
     title = None, figsize = (4, 4), ax = None,
-    cmap = 'Turbo', legend_loc = 'right margin',frameon = 'small', fontsize = 10
+    cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
+    legend = True, legend_loc = 'right margin', frameon = 'small', fontsize = 10,
+    dpi = 100, sample_name = None
 ):
-    setup_styles(**plotting_styles)
+    res_factor = 1.5
     import pandas as pd
     import datashader as ds
     import datashader.transfer_functions as tf
     from scipy.sparse import issparse
     from exprmat.plotting import palettes
 
-    cvs = ds.Canvas(plot_width = 800, plot_height = 800)
+    cvs = ds.Canvas(plot_width = int(figsize[0] * dpi * res_factor), plot_height = int(figsize[1] * dpi * res_factor))
     embedding = adata.obsm[basis]
     df = pd.DataFrame(embedding, columns=['x', 'y'])
 
@@ -81,25 +84,48 @@ def embedding_atlas(
         X = adata.raw[:,color].X
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)
+        
+    # try some conventions
+    elif 'gene' in adata.var.keys() and color in adata.var['gene'].tolist():
+        genes = adata.var['gene'].tolist()
+        X = adata.X[:, genes.index(color)]
+        if issparse(X): labels = X.toarray().reshape(-1)
+        else: labels = X.reshape(-1)
+
+     # try some conventions
+    elif 'ensembl' in adata.var.keys() and color in adata.var['ensembl'].tolist():
+        genes = adata.var['ensembl'].tolist()
+        X = adata.X[:, genes.index(color)]
+        if issparse(X): labels = X.toarray().reshape(-1)
+        else: labels = X.reshape(-1)
+    
+    else: error(f'unable to find feature `{color}` in metadata or variables.')
 
     df['label'] = labels
     
     if type(labels[0]) is str:
         df['label'] = df['label'].astype('category')
         agg = cvs.points(df, 'x', 'y', ds.count_cat('label'))
-        legend_tag = True
+        legend_tag = legend
 
-        default_palette = palettes.linear_palette(palettes.all_palettes[cmap][
+        original_cat = df['label'].value_counts().index.tolist()
+        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        hue_order = original_cat if hue_order is None else hue_order
+        
+        default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
             list(palettes.all_palettes[cmap].keys())[-1]
-        ], len(adata.obs[color].cat.categories))
+        ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
 
         if f'{color}.colors' not in adata.uns.keys():
             adata.uns[f'{color}.colors'] = default_palette
         elif len(adata.uns[f'{color}.colors']) != len(default_palette):
             adata.uns[f'{color}.colors'] = default_palette
+        elif not isinstance(adata.uns[f'{color}.colors'], list):
+            adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
         
+        default_palette = adata.uns[f'{color}.colors']
         color_key = dict(zip(
-            adata.obs[color].cat.categories,
+            hue_order,
             adata.uns[f'{color}.colors']
         ))
         
@@ -117,19 +143,34 @@ def embedding_atlas(
         
         agg = cvs.points(df, 'x', 'y', ds.mean('label'))
         legend_tag = False
-        if cmap in palettes.all_palettes.keys():
-            num = list(palettes.all_palettes[cmap].keys())[-1]
-            img = tf.shade(agg,cmap = palettes.all_palettes[cmap][num])
-        else: img = tf.shade(agg,cmap = cmap)
+
+        cmap = list(palettes.interp_palette(palettes.all_palettes[cmap][
+            list(palettes.all_palettes[cmap].keys())[-1]
+        ], 256)) if isinstance(cmap, str) else cmap
+
+        if cmap_reverse:
+            cmap = cmap[::-1]
+
+        # np.array([0.95, 0.95, 0.98, 1]) # a tint of bluish gray
+        if cmap_lower is not None: 
+            for ix in range(5): cmap[ix] = cmap_lower
+
+        cmap = listedcm(cmap)
+        img = tf.shade(agg,cmap = cmap)
     
     else:
         warning('color label must be categorical (string) or numerical.')
         return None
     
-    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    if ax is None: fig, ax = plt.subplots(figsize = figsize, dpi = dpi)
     else: fig = ax.figure
-    
-    ax.imshow(img.to_pil(), aspect = 'auto')
+
+    ax.imshow(
+        img.to_pil(), 
+        aspect = 'auto', 
+        interpolation = 'bicubic',
+        extent = (0, dpi * figsize[0] * res_factor, 0, dpi * figsize[1] * res_factor)
+    )
     
     def format_coord(x, y): return f"x = {x:.2f}, y = {y:.2f}"
     ax.format_coord = format_coord
@@ -159,8 +200,6 @@ def embedding_atlas(
         ax.spines['bottom'].set_visible(True)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        # ax.spines['bottom'].set_bounds(0,150)
-        # ax.spines['left'].set_bounds(0,150)
         ax.set_xlabel(f'{basis}.1',loc='left',fontsize = fontsize)
         ax.set_ylabel(f'{basis}.2',loc='bottom',fontsize = fontsize)
 
@@ -175,13 +214,15 @@ def embedding_atlas(
         ax.set_xlabel(f'{basis}.1',loc='center',fontsize=fontsize)
         ax.set_ylabel(f'{basis}.2',loc='center',fontsize=fontsize)
     
-    line_width = 1
+    line_width = 0.6
     ax.spines['left'].set_linewidth(line_width)
     ax.spines['bottom'].set_linewidth(line_width)
     if title is None: title = color
-    ax.set_title(title,fontsize = fontsize)
+    ax.set_title(title,fontsize = fontsize * 1.2)
+    ax.set_xlim(dpi * figsize[0] * -0.05 * res_factor, dpi * figsize[0] * 1.05 * res_factor)
+    ax.set_ylim(dpi * figsize[1] * -0.05 * res_factor, dpi * figsize[1] * 1.05 * res_factor)
 
-    return ax
+    return ax.figure
 
 
 def embedding(

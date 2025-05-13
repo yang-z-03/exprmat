@@ -29,7 +29,7 @@ module attribute, and the 'small' palettes (i.e. excluding the ones with 256
 colors) are collected and in a ``small_palettes`` attribute.
 
 This module includes some palettes that are useful for addressing color deficiencies,
-which contains `Paul Tol's color schemes`_, and ``Colorblind`` from 
+which contains Paul Tol's color schemes, and ``Colorblind`` from 
 https://jfly.uni-koeln.de/color/#pallet.
 
 The following palettes are also introduced in `Paul Tol's color schemes` but with 

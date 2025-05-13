@@ -15,10 +15,51 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from exprmat.ansi import error, warning, info
 from exprmat.data.finders import get_mapper_ensembl, get_mapper_name, get_genome
-from exprmat.data.finders import update_mapper_ensembl, update_mapper_name, save_genome_changes
+from exprmat.data.finders import update_mapper_ensembl, update_mapper, save_genome_changes
 from exprmat.reader.metadata import metadata
 from exprmat.configuration import default as cfg
 from exprmat.ansi import info
+
+
+def refine_finder(features_fpath, taxa = 'mmu'):
+    table = pd.read_table(features_fpath, sep = '\t', header = None)
+    assert len(table.columns) >= 2
+
+    name_finder = get_mapper_name(taxa)
+    ensembl_finder = get_mapper_ensembl(taxa)
+
+    ensembls = table[0].tolist()
+    names = table[1].tolist()
+    mentioned_taxa = []
+
+    for ens, nm in zip(ensembls, names):
+
+        # here, we will check whether the names and ensembls starts with a reference
+        # prefix. 10x's default will append something like mm10_ before the gene names
+        # and indices in multi-species joint analysis. if there is no such prefix detected
+        # this means the gene comes from the default taxa.
+        
+        if '_' in ens:
+            reference_name = ens.split('_')[0]
+            pure_ens = ens.replace(reference_name + '_', '')
+            pure_nm = nm.replace(reference_name + '_', '')
+            if not reference_name in cfg['taxa.reference'].keys():
+                warning(f'gene {ens} seems to have a reference prefix, but not registered to taxa.')
+                continue
+
+            reference_taxa = cfg['taxa.reference'][reference_name]
+            alt_name_finder = get_mapper_name(reference_taxa)
+            alt_ens_finder = get_mapper_ensembl(reference_taxa)
+            if ((pure_nm not in alt_name_finder.keys()) or (pure_ens not in alt_ens_finder.keys())):
+                update_mapper(reference_taxa, pure_nm, pure_ens)
+                if reference_taxa not in mentioned_taxa: mentioned_taxa += [reference_taxa]
+
+        elif ((nm not in name_finder.keys()) or (ens not in ensembl_finder.keys())):
+            update_mapper(taxa, nm, ens)
+            if taxa not in mentioned_taxa: mentioned_taxa += [taxa]
+
+    for taxa in mentioned_taxa:
+        save_genome_changes(taxa)
 
 
 def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
@@ -91,12 +132,12 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
                 reference_taxa = cfg['taxa.reference'][reference_name]
                 alt_name_finder = get_mapper_name(reference_taxa)
                 alt_ens_finder = get_mapper_ensembl(reference_taxa)
-                if ((pure_nm not in alt_name_finder.keys()) and (pure_ens in alt_ens_finder.keys())):
-                    update_mapper_name(reference_taxa, pure_nm, alt_ens_finder[pure_ens])
+                if ((pure_nm not in alt_name_finder.keys()) or (pure_ens not in alt_ens_finder.keys())):
+                    update_mapper(reference_taxa, pure_nm, pure_ens)
                     if reference_taxa not in mentioned_taxa: mentioned_taxa += [reference_taxa]
 
-            elif ((nm not in name_finder.keys()) and (ens in ensembl_finder.keys())):
-                update_mapper_name(default_taxa, nm, ensembl_finder[ens])
+            elif ((nm not in name_finder.keys()) or (ens not in ensembl_finder.keys())):
+                update_mapper(default_taxa, nm, ens)
                 if default_taxa not in mentioned_taxa: mentioned_taxa += [default_taxa]
 
         for taxa in mentioned_taxa:

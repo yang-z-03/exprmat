@@ -84,7 +84,7 @@ def highly_variable(
     elif method == 'vst':
         df = highly_variable_genes_seurat(
             m_count, obs = adata.obs, var = adata.var, subset = False,
-            **kwargs
+            n_top_genes = n_top_genes, **kwargs
         )
         adata.var[dest + '.means'] = df['means']
         adata.var[dest + '.vars'] = df['variances']

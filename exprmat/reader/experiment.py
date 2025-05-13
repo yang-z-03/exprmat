@@ -323,8 +323,10 @@ class experiment:
                 if not samp in self.modalities[mod].keys():
                     warning(f'{samp} not loaded in the {mod} modality.')
                     continue
-
-                results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
+                
+                try:
+                    results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
+                except: warning(f'method failed for sample {samp}')
         
         return results
 
@@ -694,6 +696,13 @@ class experiment:
         from exprmat.reduction.plot import embedding
         return embedding(adata, sample_name = sample_name, **kwargs)
     
+
+    @staticmethod
+    def rna_plot_embedding_atlas(adata, sample_name, **kwargs):
+        from exprmat.reduction.plot import embedding_atlas
+        return embedding_atlas(adata, sample_name = sample_name, **kwargs)
+    
+
     @staticmethod
     def rna_plot_gene_gene(adata, sample_name, **kwargs):
         from exprmat.reduction.plot import gene_gene
@@ -887,6 +896,43 @@ class experiment:
     
 
     @staticmethod
+    def rna_plot_multiple_embedding_atlas(
+        adata, sample_name, basis, features, ncols, 
+        figsize = (3, 3), dpi = 100, **kwargs
+    ):
+        from exprmat.reduction.plot import embedding_atlas
+        import matplotlib.pyplot as plt
+        import warnings
+        warnings.filterwarnings('ignore')
+
+        n_features = len(features)
+        nrows = n_features // ncols
+        if n_features % ncols != 0: nrows += 1
+        fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
+
+        for feat_id in range(len(features)):
+
+            if len(axes.shape) == 2:
+                embedding_atlas(
+                    adata, basis, color = features[feat_id],
+                    ax = axes[feat_id // ncols, feat_id % ncols],
+                    sample_name = sample_name, dpi = dpi, **kwargs
+                )
+
+            elif len(axes.shape) == 1:
+                embedding_atlas(
+                    adata, basis, color = features[feat_id],
+                    ax = axes[feat_id], dpi = dpi,
+                    sample_name = sample_name, **kwargs
+                )
+        
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
+        fig.tight_layout()
+        return fig
+    
+
+    @staticmethod
     def rna_plot_multiple_gene_gene(
         adata, sample_name, color, features_xy, ncols, 
         figsize = (3, 3), **kwargs
@@ -1000,9 +1046,15 @@ class experiment:
 
     def plot_rna_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_embedding, **kwargs)
+    
+    def plot_rna_embedding_atlas(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_embedding_atlas, **kwargs)
 
     def plot_rna_embedding_multiple(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_multiple_embedding, **kwargs)
+    
+    def plot_rna_embedding_atlas_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_multiple_embedding_atlas, **kwargs)
 
     def plot_rna_markers(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_markers, **kwargs)
@@ -1027,6 +1079,50 @@ class experiment:
     
     def plot_rna_expression_bar(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_expression_bar, **kwargs)
+    
+    def plot_rna_qc_gene_counts(
+        self, ncols = 4, figsize = (3, 3)
+    ):
+        from exprmat.utils import setup_styles, plotting_styles
+        setup_styles(**plotting_styles)
+
+        from exprmat.preprocessing.plot import rna_plot_gene_histogram
+        import matplotlib.pyplot as plt
+        import warnings
+        warnings.filterwarnings('ignore')
+        if self.modalities is None: error('samples are not loaded')
+        if not 'rna' in self.modalities.keys(): error('samples are not loaded')
+
+        n_features = len(self.modalities['rna'])
+        if n_features == 0: error('samples are not loaded')
+
+        nrows = n_features // ncols
+        if n_features % ncols != 0: nrows += 1
+        fig, axes = plt.subplots(nrows, ncols)
+
+        samples = list(self.modalities['rna'].keys())
+        samples.sort()
+        for feat_id in range(n_features):
+
+            if len(axes.shape) == 2:
+                rna_plot_gene_histogram(
+                    self.modalities['rna'][samples[feat_id]],
+                    sample_name = samples[feat_id],
+                    ax = axes[feat_id // ncols, feat_id % ncols]
+                )
+
+            elif len(axes.shape) == 1:
+                rna_plot_gene_histogram(
+                    self.modalities['rna'][samples[feat_id]],
+                    sample_name = samples[feat_id],
+                    ax = axes[feat_id]
+                )
+        
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
+        fig.tight_layout()
+        return fig
+    
     
 
     # accessor wrappers
@@ -1164,30 +1260,36 @@ class experiment:
 
         else: print(red('[!]'), 'dataset not integrated.')
 
-        print(red('[*]'), 'composed of samples:')
-        for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
-            self.metadata.dataframe['location'], 
-            self.metadata.dataframe['sample'], 
-            self.metadata.dataframe['batch'], 
-            self.metadata.dataframe['group'], 
-            self.metadata.dataframe['modality'], 
-            self.metadata.dataframe['taxa']
-        ):
-            loaded = False
-            if (self.modalities is not None) and \
-               (i_mod in self.modalities.keys()) and \
-               (i_sample in self.modalities[i_mod].keys()):
-                loaded = True
+        if self.modalities is None or len(self.modalities) == 0:
+            print(red('[*]'), 'samples not loaded from disk.')
+        
+        else:
+            print(red('[*]'), 'composed of samples:')
+            for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
+                self.metadata.dataframe['location'], 
+                self.metadata.dataframe['sample'], 
+                self.metadata.dataframe['batch'], 
+                self.metadata.dataframe['group'], 
+                self.metadata.dataframe['modality'], 
+                self.metadata.dataframe['taxa']
+            ):
+                loaded = False
+                if (self.modalities is not None) and \
+                   (i_mod in self.modalities.keys()) and \
+                   (i_sample in self.modalities[i_mod].keys()):
+                    loaded = True
 
-            print(
-                f'  {i_sample:20}', cyan(f'{i_mod:4}'), yellow(f'{i_taxa:4}'),
-                f'batch {green(f"{i_batch:10}")}',
-                red('dataset not loaded') if not loaded else 
-                f'{green(str(self.modalities[i_mod][i_sample].n_obs))} × ' +
-                f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}'
-            )
+                p_sample = i_sample if len(i_sample) < 30 else i_sample[:27] + ' ..'
+                p_batch = i_batch if len(i_batch) < 30 else i_batch[:27] + ' ..'
+                print(
+                    f'  {p_sample:30}', cyan(f'{i_mod:4}'), yellow(f'{i_taxa:4}'),
+                    f'batch {green(f"{p_batch:30}")}',
+                    red('dataset not loaded') if not loaded else 
+                    f'{green(str(self.modalities[i_mod][i_sample].n_obs))} × ' +
+                    f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}'
+                )
 
-        return '<exprmat.reader.experiment>'
+        return f'<exprmat.reader.experiment> ({len(self.metadata.dataframe)} samples)'
 
     pass
 

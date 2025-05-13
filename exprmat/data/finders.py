@@ -1,6 +1,7 @@
 
 import os
 import pandas
+from exprmat.ansi import warning, info
 from exprmat.configuration import default as cfg
 
 basepath = os.path.dirname(__file__)
@@ -122,6 +123,36 @@ def get_mapper_ensembl(taxa):
 
     genome[taxa]['mapper.ensembl'] = ensembl_finder
     return ensembl_finder
+
+
+def update_mapper(taxa, name, ens):
+    '''
+    Update the name ENSEMBL ID pair.
+    '''
+    
+    if taxa not in genome.keys():
+        get_mapper_name(taxa)
+
+    if 'mapper.name' not in genome[taxa].keys():
+        get_mapper_name(taxa)
+
+    if 'mapper.ensembl' not in genome[taxa].keys():
+        get_mapper_ensembl(taxa)
+    
+    if (name not in genome[taxa]['mapper.name'].keys()):
+        if (ens in genome[taxa]['mapper.ensembl'].keys()):
+            genome[taxa]['mapper.name'][name] = genome[taxa]['mapper.ensembl'][ens]
+        else: info(f'{ens} -> {name} pair could not be established.')
+
+    else:
+        if (ens not in genome[taxa]['mapper.ensembl'].keys()):
+            genome[taxa]['mapper.ensembl'][ens] = genome[taxa]['mapper.name'][name]
+        else: # both name and ens present in the dictionary, check for inconsistancy
+            if genome[taxa]['mapper.ensembl'][ens] != genome[taxa]['mapper.name'][name]:
+                warning(f'{ens} -> {name} is conflicted. ({ens} registered to {genome[taxa]["mapper.ensembl"][ens]}, while {name} to {genome[taxa]["mapper.name"][name]})')
+
+    
+    return
 
 
 def update_mapper_name(taxa, name, ugene):

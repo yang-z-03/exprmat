@@ -32,7 +32,8 @@ setup(
         'datashader',
         'fa2_modified',
         'pynndescent',
-        'gseapy'
+        'gseapy',
+        'sh'
     ],
     include_package_data = False,
     package_data         = {
