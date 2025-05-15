@@ -115,7 +115,7 @@ def embedding_atlas(
         legend_tag = legend
 
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
@@ -381,7 +381,7 @@ def embedding(
         df['label'] = df['label'].astype('category')
         hue = labels
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
@@ -655,7 +655,7 @@ def gene_gene(
         df['label'] = df['label'].astype('category')
         hue = labels
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
