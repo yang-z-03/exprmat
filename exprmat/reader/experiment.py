@@ -871,7 +871,8 @@ class experiment:
     def rna_plot_dot(
         adata, sample_name, figsize, dpi, 
         var_names, groupby, *, log = False,
-        categories_order = None, expression_cutoff = 0.0, 
+        categories_order = None, expression_cutoff = 0.0, dendrogram = False,
+        dendrogram_rep = 'pca',
         mean_only_expressed = False, standard_scale = 'var', 
         title = None, colorbar_title = 'Mean expression', 
         size_title = 'Fraction of cells (%)', gene_symbols = 'gene', 
@@ -881,9 +882,17 @@ class experiment:
         cmap = 'turbo', dot_max = None, dot_min = None, smallest_dot = 0.0, **kwds
     ):
         from scanpy.plotting import dotplot
+        from scanpy.tools import dendrogram as dend
+
+        if dendrogram:
+            dend(
+                adata, groupby = groupby, use_rep = dendrogram_rep, 
+                optimal_ordering = True, key_added = f'dendrogram.{groupby}'
+            )
+
         pl = dotplot(
             adata, var_names, groupby = groupby, figsize = figsize,
-            log = log, return_fig = True,
+            log = log, return_fig = True, dendrogram = f'dendrogram.{groupby}',
             categories_order = categories_order, expression_cutoff = expression_cutoff, 
             mean_only_expressed = mean_only_expressed, standard_scale = standard_scale, 
             title = title, colorbar_title = colorbar_title, 

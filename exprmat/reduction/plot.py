@@ -60,7 +60,10 @@ def embedding_atlas(
     hue_order = None,
     title = None, figsize = (4, 4), ax = None,
     cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
-    legend = True, legend_loc = 'right margin', frameon = 'small', fontsize = 10,
+    legend = True, legend_loc = 'right margin', legend_col = 1, 
+    frameon = 'small', fontsize = 10,
+    annotate = True, annotate_style = 'index', annot_size = 12,
+    annotate_foreground = 'black', annotate_stroke = 'white',
     dpi = 100, sample_name = None
 ):
     res_factor = 1.5
@@ -103,13 +106,16 @@ def embedding_atlas(
 
     df['label'] = labels
     
+    if ax is None: fig, ax = plt.subplots(figsize = figsize, dpi = dpi)
+    else: fig = ax.figure
+
     if type(labels[0]) is str:
         df['label'] = df['label'].astype('category')
         agg = cvs.points(df, 'x', 'y', ds.count_cat('label'))
         legend_tag = legend
 
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
@@ -134,7 +140,65 @@ def embedding_atlas(
             color_key = [color_key[i] for i in df['label'].cat.categories], 
             how = 'eq_hist'
         )
+
+        ax.imshow(
+            img.to_pil(), 
+            aspect = 'auto', 
+            interpolation = 'bicubic',
+            extent = (0, dpi * figsize[0] * res_factor, 0, dpi * figsize[1] * res_factor)
+        )
+
+        if legend:
+            assert len(adata.uns[f'{color}.colors']) == len(hue_order)
+            dummy_objects = []
+            legend_artists = {}
+            for legend_t, legend_c, legend_id in zip(
+                hue_order, adata.uns[f'{color}.colors'], range(len(hue_order))
+            ):
+                dummy = index_object()
+                dummy_objects += [dummy]
+                handler = index_object_handler()
+                handler.set_option(legend_id + 1, legend_t, legend_c)
+                legend_artists[dummy] = handler
+                pass
+
+            plt.legend(
+                dummy_objects, hue_order, handler_map = legend_artists, ncol = legend_col,
+                loc = 'upper left', bbox_to_anchor = (1, 1), frameon = False
+            )
+
+        if annotate:
+            
+            scale_max_x = dpi * figsize[0] * res_factor
+            scale_max_y = dpi * figsize[1] * res_factor
+            min_x, min_y, max_x, max_y = np.min(df['x']), np.min(df['y']), np.max(df['x']), np.max(df['y'])
+
+            for legend_t, legend_c, legend_id in zip(
+                hue_order, adata.uns[f'{color}.colors'], range(len(hue_order))
+            ):
+                # calculate gravity for legend_t class.
+                xs = np.array(df.loc[df['label'] == legend_t, 'x'])
+                ys = np.array(df.loc[df['label'] == legend_t, 'y'])
+                
+                mx, my = np.mean(xs), np.mean(ys)
+                mx = scale_max_x * ((mx - min_x) / (max_x - min_x))
+                my = scale_max_y * ((my - min_y) / (max_y - min_y))
+                text = mtext.Text(
+                    x = mx, y = my, # fontproperties = 'bold',
+                    text = str(legend_id + 1) if annotate_style == 'index' else legend_t, 
+                    color = annotate_foreground,
+                    ha = 'center', va = 'center', size = annot_size
+                )
+                
+                text.set_path_effects([
+                    mpe.Stroke(linewidth = 3, foreground = annotate_stroke),
+                    mpe.Normal()
+                ])
+
+                ax.add_artist(text)
+                pass
         
+
     elif (type(labels[0]) is int) or \
          (type(labels[0]) is float) or \
          (type(labels[0]) is np.float32) or \
@@ -157,37 +221,35 @@ def embedding_atlas(
 
         cmap = listedcm(cmap)
         img = tf.shade(agg,cmap = cmap)
+        
+        ax.imshow(
+            img.to_pil(), 
+            aspect = 'auto', 
+            interpolation = 'bicubic',
+            extent = (0, dpi * figsize[0] * res_factor, 0, dpi * figsize[1] * res_factor)
+        )
     
     else:
         warning('color label must be categorical (string) or numerical.')
         return None
     
-    if ax is None: fig, ax = plt.subplots(figsize = figsize, dpi = dpi)
-    else: fig = ax.figure
 
-    ax.imshow(
-        img.to_pil(), 
-        aspect = 'auto', 
-        interpolation = 'bicubic',
-        extent = (0, dpi * figsize[0] * res_factor, 0, dpi * figsize[1] * res_factor)
-    )
-    
     def format_coord(x, y): return f"x = {x:.2f}, y = {y:.2f}"
     ax.format_coord = format_coord
 
-    if legend_tag == True:
-        unique_labels = adata.obs[color].cat.categories
-        for label in unique_labels:
-            ax.scatter([], [], c = color_key[label], label = label)
-        
-        if legend_loc == 'right margin':
-            ax.legend(
-                frameon = False,
-                loc = 'center left',
-                bbox_to_anchor = (1, 0.5),
-                ncol = (1 if len(unique_labels) <= 14 else 2 if len(unique_labels) <= 30 else 3),
-                fontsize = fontsize,
-            )
+    # if legend_tag == True:
+    #     unique_labels = adata.obs[color].cat.categories
+    #     for label in unique_labels:
+    #         ax.scatter([], [], c = color_key[label], label = label)
+    #     
+    #     if legend_loc == 'right margin':
+    #         ax.legend(
+    #             frameon = False,
+    #             loc = 'center left',
+    #             bbox_to_anchor = (1, 0.5),
+    #             ncol = (1 if len(unique_labels) <= 14 else 2 if len(unique_labels) <= 30 else 3),
+    #             fontsize = fontsize,
+    #         )
 
     if frameon == False:
         ax.axis('off')
@@ -319,7 +381,7 @@ def embedding(
         df['label'] = df['label'].astype('category')
         hue = labels
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
@@ -593,7 +655,7 @@ def gene_gene(
         df['label'] = df['label'].astype('category')
         hue = labels
         original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: int(s) if str.isdigit(s) else s)
+        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
         default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
