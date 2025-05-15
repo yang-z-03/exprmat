@@ -9,7 +9,7 @@ from exprmat.utils import find_variable
 def barplot(
     adata, *, gene, 
     slot = 'X', group = 'cell.type', selected_groups = None, 
-    split = 'treat', palette = ['red', 'black'], 
+    split = 'treat', palette = ['red', 'black'], ax = None,
     size = (6,3), dpi = 100
 ):
     
@@ -33,7 +33,9 @@ def barplot(
     dropzeros['selected.celltype'] = select_ct
     dropzeros = dropzeros.loc[dropzeros['selected.celltype'],:]
 
-    fig, axes = plt.subplots(1, 1, figsize = size, dpi = dpi)
+    if ax is None: fig, axes = plt.subplots(1, 1, figsize = size, dpi = dpi)
+    else: axes = ax
+
     plt.rcParams["ytick.labelright"] = True
     plt.rcParams["ytick.labelleft"] = False
     
@@ -93,5 +95,6 @@ def barplot(
 
     axes.spines[['left', 'top']].set_visible(False)
     axes.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.1f}"))
-    fig.tight_layout()
-    return fig
+
+    if ax is None: return fig
+    else: return axes.figure

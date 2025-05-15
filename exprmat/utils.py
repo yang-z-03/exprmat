@@ -110,6 +110,7 @@ def _(a, axis = None):
     if axis is None: return bool((a == a.flat[0]).all())
     if axis == 0: return _is_constant_rows(a.T)
     elif axis == 1: return _is_constant_rows(a)
+    else: error('not implemented.')
 
 
 def _is_constant_rows(a):
@@ -127,6 +128,7 @@ def _(a, axis = None):
     elif axis == 0:
         a = a.T.tocsr()
         return _is_constant_csr_rows(a.data, a.indptr, a.shape)
+    else: error('not implemented.')
 
 
 @njit
@@ -153,3 +155,4 @@ def _(a, axis = None):
     elif axis == 1:
         a = a.T.tocsc()
         return _is_constant_csr_rows(a.data, a.indptr, a.shape[::-1])
+    else: error('not implemented.')

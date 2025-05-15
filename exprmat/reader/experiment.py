@@ -736,6 +736,47 @@ class experiment:
     
 
     @staticmethod
+    def rna_plot_expression_bar_multiple(
+        adata, sample_name, features, ncols, group, split = None,
+        slot = 'X', selected_groups = None, palette = ['red', 'black'], 
+        figsize = (6,3), dpi = 100
+    ):
+        from exprmat.plotting.expression import barplot
+        import matplotlib.pyplot as plt
+        import warnings
+        warnings.filterwarnings('ignore')
+
+        n_features = len(features)
+        nrows = n_features // ncols
+        if n_features % ncols != 0: nrows += 1
+        fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
+
+        for feat_id in range(len(features)):
+            try:
+                if len(axes.shape) == 2:
+                    barplot(
+                        adata, gene = features[feat_id], slot = slot, group = group,
+                        ax = axes[feat_id // ncols, feat_id % ncols],
+                        split = split, selected_groups = selected_groups, palette = palette,
+                        size = figsize, dpi = dpi
+                    )
+
+                elif len(axes.shape) == 1:
+                    barplot(
+                        adata, gene = features[feat_id], slot = slot, group = group,
+                        ax = axes[feat_id],
+                        split = split, selected_groups = selected_groups, palette = palette,
+                        size = figsize, dpi = dpi
+                    )
+            except: pass
+        
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
+        fig.tight_layout()
+        return fig
+    
+
+    @staticmethod
     def rna_plot_proportion(
         adata, sample_name, major, minor, plot = 'bar', cmap = 'Turbo',
         normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
@@ -1079,6 +1120,9 @@ class experiment:
     
     def plot_rna_expression_bar(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_expression_bar, **kwargs)
+    
+    def plot_rna_expression_bar_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_expression_bar_multiple, **kwargs)
     
     def plot_rna_qc_gene_counts(
         self, ncols = 4, figsize = (3, 3)

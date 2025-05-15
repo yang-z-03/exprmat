@@ -154,3 +154,5 @@ notebooks
 
 exprmat/data/*
 !exprmat/data/*.py
+
+.idea
