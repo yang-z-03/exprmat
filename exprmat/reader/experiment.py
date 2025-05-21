@@ -25,6 +25,7 @@ import os
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import read_mtx_rna, read_h5ad_rna, read_table_rna
+from exprmat.reader.matcher import attach_tcr_f as attach_tcr
 from exprmat.ansi import warning, info, error, red, green
 
 
@@ -363,6 +364,8 @@ class experiment:
 
             if not run_on_splits:
                 figure = func(self.mudata['rna'], 'integrated', **kwargs)
+                import warnings
+                warnings.filterwarnings('ignore')
                 figure.tight_layout()
                 return figure
 
@@ -477,8 +480,98 @@ class experiment:
         self.mudata[slot].obs[into] = concat
         self.mudata[slot].obs[into] = self.mudata[slot].obs[into].astype('category')
         print(self.mudata[slot].obs[into].value_counts())
-        
+
     
+    def annotate_broadcast(self, slot = 'rna', annotation = 'cell.type', todf = None, to = 'cell.type'):
+        
+        if todf is None:
+            
+            # broadcast to the same dataset (just a copy of non-nan values.)
+            toslot = self.mudata[slot].obs[to].tolist() \
+                if to in self.mudata[slot].obs.columns \
+                    else [None] * self.mudata[slot].n_obs
+            fromslot = self.mudata[slot].obs[annotation].tolist()
+            self.mudata[slot].obs[to] = [
+                x if str(x) != 'nan' else y 
+                for x, y in zip(fromslot, toslot)
+            ]
+
+            info(f'merged {annotation} to {to} in current dataset.')
+            print(self.mudata[slot].obs[to].value_counts())
+            self.mudata[slot].obs[to] = self.mudata[slot].obs[to].astype('category')
+
+        # if todf is another subset.
+        elif isinstance(todf, str) and os.path.exists(
+            os.path.join(self.directory, 'subsets', todf + '.h5mu')
+        ):
+            if (self.subset is not None) and (todf == self.subset):
+
+                # broadcast to the same dataset (just a copy of non-nan values.)
+                toslot = self.mudata[slot].obs[to].tolist() \
+                    if to in self.mudata[slot].obs.columns \
+                        else [None] * self.mudata[slot].n_obs
+                fromslot = self.mudata[slot].obs[annotation].tolist()
+                self.mudata[slot].obs[to] = [
+                    x if str(x) != 'nan' else y 
+                    for x, y in zip(fromslot, toslot)
+                ]
+
+                info(f'merged {annotation} to {to} in current dataset.')
+                print(self.mudata[slot].obs[to].value_counts())
+                self.mudata[slot].obs[to] = self.mudata[slot].obs[to].astype('category')
+
+            else:
+                
+                mdata = mu.read_h5mu(os.path.join(self.directory, 'subsets', todf + '.h5mu'))
+                toslot = mdata[slot].obs[to].tolist() \
+                    if to in mdata[slot].obs.columns \
+                        else [None] * mdata[slot].n_obs
+                
+                fromtable = pd.DataFrame({
+                    'index': self.mudata[slot].obs_names.tolist(),
+                    '.temp': self.mudata[slot].obs[annotation].tolist()
+                })
+                fromtable = fromtable.set_index('index')
+                mdata[slot].obs = mdata[slot].obs.join(fromtable, how = 'left')
+                
+                fromslot = mdata[slot].obs['.temp'].tolist()
+                mdata[slot].obs[to] = [
+                    x if str(x) != 'nan' else y 
+                    for x, y in zip(fromslot, toslot)
+                ]
+
+                del mdata[slot].obs['.temp']
+                info(f'updated {annotation} to {to} in {todf}.h5mu')
+                print(mdata[slot].obs[to].value_counts())
+                mdata[slot].obs[to] = mdata[slot].obs[to].astype('category')
+                mdata.write_h5mu(os.path.join(self.directory, 'subsets', todf + '.h5mu'))
+        
+        elif isinstance(todf, str) and todf == 'integrated':
+            mdata = mu.read_h5mu(os.path.join(self.directory, 'integrated.h5mu'))
+            toslot = mdata[slot].obs[to].tolist() \
+                if to in mdata[slot].obs.columns \
+                    else [None] * mdata[slot].n_obs
+            
+            fromtable = pd.DataFrame({
+                'index': self.mudata[slot].obs_names.tolist(),
+                '.temp': self.mudata[slot].obs[annotation].tolist()
+            })
+            fromtable = fromtable.set_index('index')
+            mdata[slot].obs = mdata[slot].obs.join(fromtable, how = 'left')
+            
+            fromslot = mdata[slot].obs['.temp'].tolist()
+            mdata[slot].obs[to] = [
+                x if str(x) != 'nan' else y 
+                for x, y in zip(fromslot, toslot)
+            ]
+
+            del mdata[slot].obs['.temp']
+            info(f'updated {annotation} to {to} in main integrated.h5mu')
+            print(mdata[slot].obs[to].value_counts())
+            mdata[slot].obs[to] = mdata[slot].obs[to].astype('category')
+            mdata.write_h5mu(os.path.join(self.directory, 'integrated.h5mu'))
+            
+            
     def exclude(
         self, slot = 'rna', annotation = 'cell.type', remove = []
     ):
@@ -686,6 +779,98 @@ class experiment:
 
     
     @staticmethod
+    def rna_summary(
+        adata, sample_name, data = 'X', method = 'n', method_args = {},
+        orient = 'obs', on = 'sample', across = None, split = None, 
+        attached_metadata_on = None, attached_metadata_across = None,
+        attach_method_on = 'first', attach_method_across = 'first'
+    ):
+        from exprmat.clustering.summary import summarize
+        return summarize(
+            adata, data = data, method = method, method_args = method_args,
+            orient = orient, on = on, across = across, split = split,
+            attached_metadata_on = attached_metadata_on,
+            attached_metadata_across = attached_metadata_across,
+            attach_method_on = attach_method_on,
+            attach_method_across = attach_method_across
+        )
+
+
+    @staticmethod
+    def rna_attach_tcr(adata, sample_name, searchdir):
+        # automatically search the tcr folder in the root directory.
+        for fpath in os.listdir(searchdir):
+            if not fpath.endswith('.tsv'): continue
+            attach_tcr(adata, os.path.join(searchdir, fpath))
+        
+        assert 'clone.id' in adata.obs.columns
+        assert 'clone' in adata.obs.columns
+        assert 'tra' in adata.obs.columns
+        assert 'trb' in adata.obs.columns
+        n_match = adata.n_obs - adata.obs['clone'].isna().sum()
+        info(f'{n_match} out of {adata.n_obs} ({(100 * n_match / adata.n_obs):.1f}%) tcr detections mapped.')
+
+
+    @staticmethod
+    def rna_calculate_tcr_metrics(adata, sample_name, expanded_clone = 2):
+        assert 'clone.id' in adata.obs.columns
+        assert 'clone' in adata.obs.columns
+        assert 'tra' in adata.obs.columns
+        assert 'trb' in adata.obs.columns
+
+        # valid tcr a and b:
+        empty_tcra = [(x == 'na') or ('nt(na)' in x) for x in adata.obs['tra'].tolist()]
+        empty_tcrb = [(x == 'na') or ('nt(na)' in x) for x in adata.obs['trb'].tolist()]
+        adata.obs['trab'] = [not(x or y) for x, y in zip(empty_tcra, empty_tcrb)]
+
+        # expanded tcr clone
+        if 'tcr.expanded' in adata.obs.columns: del adata.obs['tcr.expanded']
+        if 'tcr.clone.size' in adata.obs.columns: del adata.obs['tcr.clone.size']
+        sizes = adata.obs['clone.id'].value_counts()
+        sizes = pd.DataFrame({
+            'key': sizes.keys().tolist(),
+            'tcr.clone.size': sizes.values
+        })
+        sizes.index = sizes['key'].tolist()
+        del sizes['key']
+
+        if 'na' in sizes.index:
+            sizes.loc['na', 'tcr.clone.size'] = 0
+        
+        ljoin = adata.obs.join(sizes, on = 'clone.id', how = 'left')
+        assert len(ljoin) == adata.n_obs
+        adata.obs = ljoin
+        adata.obs['tcr.expanded'] = adata.obs['tcr.clone.size'] > expanded_clone
+
+
+    @staticmethod
+    def rna_expression_mask(adata, sample_name, gene, key, lognorm = 'X', threshold = 0.1, negate = False):
+        from exprmat.utils import find_variable
+        if not negate: adata.obs[key] = find_variable(adata, gene, layer = lognorm) >= threshold
+        else: adata.obs[key] = find_variable(adata, gene, layer = lognorm) < threshold
+
+
+    @staticmethod
+    def rna_gsea(adata, sample_name, taxa,
+        # differential expression slots:
+        de_slot, group_name = None,
+        min_pct = 0.0, max_pct_reference = 1, 
+        min_lfc = None, max_lfc = None, remove_zero_pval = False,
+
+        key_added = 'gsea',
+        gene_sets = 'all',
+        identifier = 'entrez'
+    ):
+        from exprmat.descriptive.gse import gse
+        return gse(
+            adata, taxa = taxa, de_slot = de_slot, group_name = None,
+            min_pct = min_pct, max_pct_reference = max_pct_reference,
+            min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
+            key_added = key_added, gene_sets = gene_sets, identifier = identifier
+        )
+    
+
+    @staticmethod
     def rna_plot_qc(adata, sample_name, **kwargs):
         from exprmat.preprocessing.plot import rna_plot_qc_metrics
         return rna_plot_qc_metrics(adata, sample_name, **kwargs)
@@ -777,6 +962,20 @@ class experiment:
     
 
     @staticmethod
+    def rna_plot_compare_scatter(
+        adata, sample_name, group_x, group_y, key, 
+        slot = 'X', markers = [], 
+        figsize = (4, 4), dpi = 100
+    ):
+        from exprmat.plotting.expression import compare_scatter
+        return compare_scatter(
+            adata, group_x = group_x, group_y = group_y,
+            key = key, slot = slot, markers = markers, sample = sample_name,
+            figsize = figsize, dpi = dpi
+        )
+    
+
+    @staticmethod
     def rna_plot_proportion(
         adata, sample_name, major, minor, plot = 'bar', cmap = 'Turbo',
         normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
@@ -788,6 +987,7 @@ class experiment:
         def get_palette(n):
             if n + '.colors' in adata.uns.keys():
                 return adata.uns[n + '.colors']
+            else: return 'Turbo'
 
         if plot == 'bar':
             fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False)
@@ -844,22 +1044,23 @@ class experiment:
         fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
         
         for feat_id in range(len(groups)):
+            try:
+                if len(axes.shape) == 2:
+                    embedding(
+                        adata[adata.obs[grouping_key] == groups[feat_id],:], 
+                        basis, color = kde,
+                        ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
+                        sample_name = sample_name, title = groups[feat_id], **kwargs
+                    )
 
-            if len(axes.shape) == 2:
-                embedding(
-                    adata[adata.obs[grouping_key] == groups[feat_id],:], 
-                    basis, color = kde,
-                    ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
-                    sample_name = sample_name, title = groups[feat_id], **kwargs
-                )
-
-            elif len(axes.shape) == 1:
-                embedding(
-                    adata[adata.obs[grouping_key] == groups[feat_id],:], 
-                    basis, color = kde,
-                    ax = axes[feat_id], dpi = dpi,
-                    sample_name = sample_name, title = groups[feat_id], **kwargs
-                )
+                elif len(axes.shape) == 1:
+                    embedding(
+                        adata[adata.obs[grouping_key] == groups[feat_id],:], 
+                        basis, color = kde,
+                        ax = axes[feat_id], dpi = dpi,
+                        sample_name = sample_name, title = groups[feat_id], **kwargs
+                    )
+            except: pass
         
         fig.set_figwidth(figsize[0])
         fig.set_figheight(figsize[1])
@@ -924,20 +1125,21 @@ class experiment:
         fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
 
         for feat_id in range(len(features)):
+            try:
+                if len(axes.shape) == 2:
+                    embedding(
+                        adata, basis, color = features[feat_id],
+                        ax = axes[feat_id // ncols, feat_id % ncols],
+                        sample_name = sample_name, dpi = dpi, **kwargs
+                    )
 
-            if len(axes.shape) == 2:
-                embedding(
-                    adata, basis, color = features[feat_id],
-                    ax = axes[feat_id // ncols, feat_id % ncols],
-                    sample_name = sample_name, dpi = dpi, **kwargs
-                )
-
-            elif len(axes.shape) == 1:
-                embedding(
-                    adata, basis, color = features[feat_id],
-                    ax = axes[feat_id], dpi = dpi,
-                    sample_name = sample_name, **kwargs
-                )
+                elif len(axes.shape) == 1:
+                    embedding(
+                        adata, basis, color = features[feat_id],
+                        ax = axes[feat_id], dpi = dpi,
+                        sample_name = sample_name, **kwargs
+                    )
+            except: pass
         
         fig.set_figwidth(figsize[0])
         fig.set_figheight(figsize[1])
@@ -961,20 +1163,21 @@ class experiment:
         fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
 
         for feat_id in range(len(features)):
+            try:
+                if len(axes.shape) == 2:
+                    embedding_atlas(
+                        adata, basis, color = features[feat_id],
+                        ax = axes[feat_id // ncols, feat_id % ncols],
+                        sample_name = sample_name, dpi = dpi, **kwargs
+                    )
 
-            if len(axes.shape) == 2:
-                embedding_atlas(
-                    adata, basis, color = features[feat_id],
-                    ax = axes[feat_id // ncols, feat_id % ncols],
-                    sample_name = sample_name, dpi = dpi, **kwargs
-                )
-
-            elif len(axes.shape) == 1:
-                embedding_atlas(
-                    adata, basis, color = features[feat_id],
-                    ax = axes[feat_id], dpi = dpi,
-                    sample_name = sample_name, **kwargs
-                )
+                elif len(axes.shape) == 1:
+                    embedding_atlas(
+                        adata, basis, color = features[feat_id],
+                        ax = axes[feat_id], dpi = dpi,
+                        sample_name = sample_name, **kwargs
+                    )
+            except: pass
         
         fig.set_figwidth(figsize[0])
         fig.set_figheight(figsize[1])
@@ -998,26 +1201,27 @@ class experiment:
         fig, axes = plt.subplots(nrows, ncols)
 
         for feat_id in range(len(features_xy)):
+            try:
+                if len(axes.shape) == 2:
+                    gene_gene(
+                        adata, 
+                        gene_x = features_xy[feat_id][0],
+                        gene_y = features_xy[feat_id][1],
+                        color = color,
+                        ax = axes[feat_id // ncols, feat_id % ncols],
+                        sample_name = sample_name, **kwargs
+                    )
 
-            if len(axes.shape) == 2:
-                gene_gene(
-                    adata, 
-                    gene_x = features_xy[feat_id][0],
-                    gene_y = features_xy[feat_id][1],
-                    color = color,
-                    ax = axes[feat_id // ncols, feat_id % ncols],
-                    sample_name = sample_name, **kwargs
-                )
-
-            elif len(axes.shape) == 1:
-                gene_gene(
-                    adata, 
-                    gene_x = features_xy[feat_id][0],
-                    gene_y = features_xy[feat_id][1],
-                    color = color,
-                    ax = axes[feat_id],
-                    sample_name = sample_name, **kwargs
-                )
+                elif len(axes.shape) == 1:
+                    gene_gene(
+                        adata, 
+                        gene_x = features_xy[feat_id][0],
+                        gene_y = features_xy[feat_id][1],
+                        color = color,
+                        ax = axes[feat_id],
+                        sample_name = sample_name, **kwargs
+                    )
+            except: pass
         
         fig.set_figwidth(figsize[0])
         fig.set_figheight(figsize[1])
@@ -1029,6 +1233,17 @@ class experiment:
     def rna_plot_cnv_matrix(adata, sample_name, **kwargs):
         from exprmat.plotting.cnv import chromosome_heatmap
         return chromosome_heatmap(adata, sample_name = sample_name, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_gsea_running_es(
+        adata, sample_name, gsea, terms, figsize = (4, 4), colors = None, title = None, **kwargs
+    ):
+        from exprmat.plotting.gse import esplot
+        return esplot(
+            adata, sample_name = sample_name, title = title,
+            gsea = gsea, terms = terms, figsize = figsize, colors = colors, **kwargs
+        )
 
 
     # wrapper functions
@@ -1083,12 +1298,45 @@ class experiment:
         self.do_for_rna(run_on_samples, experiment.rna_kde, **kwargs)
 
     def run_rna_proportion(self, run_on_samples = False, **kwargs):
+        '''
+        This is a simplified method of cell type proportion calculation.
+        It is implemented in earlier versions of the package and can be replaced by a more
+        general version of counting summary. This returns a simple dataframe, while summary
+        returns an annotated object and can be further processed using routines under
+        ``exprmat.clustering.summary`` package.
+        '''
         return self.do_for_rna(run_on_samples, experiment.rna_proportion, **kwargs)
     
     def run_rna_infercnv(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_infercnv, **kwargs)
-
     
+    def run_rna_summary(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_summary, **kwargs)
+    
+    def run_rna_attach_tcr(self, run_on_samples = False):
+        return self.do_for_rna(
+            run_on_samples, 
+            experiment.rna_attach_tcr, 
+            searchdir = os.path.join(self.directory, 'tcr')
+        )
+
+    def run_rna_calculate_tcr_metrics(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_calculate_tcr_metrics, **kwargs)
+    
+    def run_rna_expression_mask(
+        self, run_on_samples = False, gene = None, key = 'mask', 
+        lognorm = 'X', threshold = 0.1, negate = False
+    ):
+        return self.do_for_rna(
+            run_on_samples, experiment.rna_expression_mask, 
+            gene = gene, key = key, lognorm = lognorm, threshold = threshold,
+            negate = negate
+        )
+    
+    def run_rna_gsea(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_gsea, **kwargs)
+    
+
     # plotting wrappers
 
     def plot_rna_qc(self, run_on_samples = False, **kwargs):
@@ -1133,6 +1381,9 @@ class experiment:
     def plot_rna_expression_bar_multiple(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_expression_bar_multiple, **kwargs)
     
+    def plot_rna_compare_scatter(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_compare_scatter, **kwargs)
+    
     def plot_rna_qc_gene_counts(
         self, ncols = 4, figsize = (3, 3)
     ):
@@ -1176,12 +1427,14 @@ class experiment:
         fig.tight_layout()
         return fig
     
+    def plot_rna_gsea_running_es(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_gsea_running_es, **kwargs)
     
-
+    
     # accessor wrappers
 
     def get_rna_markers(
-        self, de_slot = 'markers', group_name = None,
+        self, de_slot = 'markers', group_name = None, max_q = None,
         min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
     ):
         self.check_merged('rna')
@@ -1204,9 +1457,43 @@ class experiment:
             tab = tab[tab['lfc'] <= max_lfc]
         if remove_zero_pval:
             tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
+        if max_q is not None and 'q' in tab.columns:
+            tab = tab[tab['q'] <= max_q]
         
         tab = tab.sort_values(by = ['scores'], ascending = False)
         return tab
+    
+
+    def get_rna_gsea(self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+        
+        df = {
+            'name': [],
+            'es': [],
+            'nes': [],
+            'p': [],
+            'fwerp': [],
+            'fdr': [],
+            'tag': []
+        }
+
+        for gs in self.mudata['rna'].uns[gsea_slot]['results'].keys():
+            data = self.mudata['rna'].uns[gsea_slot]['results'][gs]
+            df['name'].append(gs)
+            df['es'].append(data['es'])
+            df['nes'].append(data['nes'])
+            df['p'].append(data['p'])
+            df['fwerp'].append(data['fwerp'])
+            df['fdr'].append(data['fdr'])
+            df['tag'].append(data['tag'])
+        
+        df = pd.DataFrame(df)
+        if max_fdr is not None:
+            df = df[df['fdr'] <= max_fdr]
+        if max_p is not None:
+            df = df[df['p'] <= max_p]
+        
+        df.sort_values(['p'])
+        return df
 
 
     def save(self, fdir = None, save_samples = True):
@@ -1219,8 +1506,11 @@ class experiment:
 
         if self.mudata is not None:
             if self.subset is None:
+                info(f"main dataset write to {os.path.join(fdir, 'integrated.h5mu')}")
                 self.mudata.write_h5mu(os.path.join(fdir, 'integrated.h5mu'))
-            else: self.mudata.write_h5mu(os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
+            else: 
+                info(f"main dataset write to {os.path.join(fdir, 'subsets', self.subset + '.h5mu')}")
+                self.mudata.write_h5mu(os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
 
         if not save_samples: return
         if self.modalities is not None:

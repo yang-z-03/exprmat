@@ -435,7 +435,6 @@ def embedding(
                 dummy_objects, hue_order, handler_map = legend_artists, ncol = legend_col,
                 loc = 'upper left', bbox_to_anchor = (1, 1), frameon = False
             )
-        
 
         if annotate:
 
@@ -461,7 +460,21 @@ def embedding(
 
                 axes.add_artist(text)
                 pass
-        
+    
+    elif type(labels[0]) is bool:
+
+        sb.scatterplot(
+            data = df.loc[df['label'] == False, :], x = 'x', y = 'y',
+            edgecolor = None, legend = False, ax = axes, s = ptsize, rasterized = rasterize,
+            alpha = alpha, color = '#f0f0f0'
+        )
+
+        sb.scatterplot(
+            data = df.loc[df['label'] == True, :], x = 'x', y = 'y',
+            edgecolor = None, legend = False, ax = axes, s = ptsize, rasterized = rasterize,
+            alpha = alpha, color = 'red'
+        )
+
     elif (type(labels[0]) is int) or \
          (type(labels[0]) is float) or \
          (type(labels[0]) is np.float32) or \
@@ -583,7 +596,10 @@ def gene_gene(
 
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
     cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
-    legend_loc = 'right margin', frameon = 'small', fontsize = 9
+    legend_loc = 'right margin', frameon = 'small', fontsize = 9,
+
+    remove_zero_expression = False,
+    scale = 'log', arcsinh_divider = None
 ):
     setup_styles(**plotting_styles)
     import pandas as pd
@@ -632,6 +648,24 @@ def gene_gene(
         'y': gy,
         'label': labels
     })
+
+    if remove_zero_expression:
+        df = df.loc[(df['x'] > 0) & (df['y'] > 0), :].copy()
+
+    if scale == 'log':
+        pass
+    elif scale == 'linear':
+        df['x'] = np.expm1(df['x'])
+        df['y'] = np.expm1(df['y'])
+    elif scale == 'arcsinh':
+        lx = np.expm1(df['x']).loc[df['x'] > 0]
+        ly = np.expm1(df['y']).loc[df['x'] > 0]
+        df['x'] = np.arcsinh(np.expm1(df['x']) / (arcsinh_divider if arcsinh_divider is not None else (np.median(lx) / 20)))
+        df['y'] = np.arcsinh(np.expm1(df['y']) / (arcsinh_divider if arcsinh_divider is not None else (np.median(ly) / 20)))
+
+    gx = df['x'].tolist()
+    gy = df['y'].tolist()
+    labels = df['label'].tolist()
 
     if ax is None:
         fig, axes = plt.subplots(figsize = figsize, dpi = dpi)

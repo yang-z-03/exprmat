@@ -3,7 +3,7 @@ import seaborn as sns
 from matplotlib import ticker
 import matplotlib.pyplot as plt
 import pandas as pd
-from exprmat.utils import find_variable
+from exprmat.utils import find_variable, choose_layer
 
 
 def barplot(
@@ -12,6 +12,9 @@ def barplot(
     split = 'treat', palette = ['red', 'black'], ax = None,
     size = (6,3), dpi = 100
 ):
+    
+    plt.rcParams["ytick.labelright"] = True
+    plt.rcParams["ytick.labelleft"] = False
     
     colnames = ['logc' + x for x in [gene]]
     cellnames = ['c' + str(i) for i in range(len(adata.obs_names.tolist()))]
@@ -36,9 +39,6 @@ def barplot(
     if ax is None: fig, axes = plt.subplots(1, 1, figsize = size, dpi = dpi)
     else: axes = ax
 
-    plt.rcParams["ytick.labelright"] = True
-    plt.rcParams["ytick.labelleft"] = False
-    
     sns.boxplot(
         data = dropzeros.loc[dropzeros['name'] == gene,:],
         x = "row", y = "logc", hue = 'split', ax = axes, fill = True,
@@ -95,6 +95,38 @@ def barplot(
 
     axes.spines[['left', 'top']].set_visible(False)
     axes.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.1f}"))
+
+    if ax is None: return fig
+    else: return axes.figure
+
+
+def compare_scatter(
+    adata, *, group_x, group_y, key, slot = 'X', markers = [],
+    ax = None, sample = None, figsize = (4, 4), dpi = 100
+):
+    import numpy as np
+    x = choose_layer(adata[adata.obs[key] == group_x, :], layer = slot).copy()
+    y = choose_layer(adata[adata.obs[key] == group_y, :], layer = slot).copy()
+    mean_x = np.array(x.sum(axis = 0))[0]
+    mean_y = np.array(y.sum(axis = 0))[0]
+    varn = adata.var['gene'].tolist()
+    ann = ['annot' if x in markers else 'bg' for x in varn]
+
+    if ax is None: fig, axes = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+    else: axes = ax
+
+    sns.scatterplot(
+        x = mean_x, y = mean_y, ax = ax, hue = ann,
+        hue_order = ['bg', 'annot'], palette = ['gray', 'red'],
+        s = 4, edgecolor = None, legend = False
+    )
+
+    plt.xlabel(f'Average expression in {group_x}')
+    plt.ylabel(f'Average expression in {group_y}')
+
+    for x, y, name in zip(mean_x, mean_y, varn):
+        if name in markers:
+            plt.text(x = x + 5, y = y + 5, s = name, fontsize = 9, color = 'black')
 
     if ax is None: return fig
     else: return axes.figure

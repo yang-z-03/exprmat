@@ -6,7 +6,6 @@ from functools import singledispatch
 from numba import njit
 
 import numba
-import numpy as np
 from exprmat.ansi import error
 
 
@@ -23,6 +22,11 @@ def setup_styles(font_name = 'Helvetica Neue LT Std', backend = 'TkAgg'):
     # mpl.use(backend)
     plt.rcParams['font.family'] = 'sans-serif'
     plt.rcParams['font.sans-serif'] = font_name
+    plt.rcParams["ytick.labelright"] = False
+    plt.rcParams["ytick.labelleft"] = True
+
+    np.set_printoptions(precision = 3, floatmode = 'fixed', suppress = True)
+    pass
 
 
 def ensure_array(a):

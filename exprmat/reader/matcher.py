@@ -483,3 +483,331 @@ def match_matrix_rna(
 
     del adata_f
     return final
+
+
+def stringify_tcr(df, contig, v, d, j, nt, aa):
+    clone = ""
+    df = df.copy()
+    df.fillna('na', inplace = True)
+    if v is not None and j is not None:
+        if d is not None: clone = 'vdj(' + df[v] + ', ' + df[d] + ', ' + df[j] + ')'
+        else: clone = 'vj(' + df[v] + ', ' + df[j] + ')'
+    
+    # aa alone may show degrees of degeneration!
+    if nt is not None: clone = clone + (', ' if clone is not None else '') + 'nt(' + df[nt] + ')'
+    elif aa is not None: clone = clone + (', ' if clone is not None else '') + 'aa(' + df[aa] + ')'
+    return f'{contig}(' + clone + ')' 
+
+
+def parse_tcr_percell(
+    fpath, *, sep = ',', index = True,
+
+    # the mapper of columns between some custom export files towards a uniform one.
+    barcode = 'barcode',
+    sample = 'sample',
+    barcode_translation = None,
+
+    trav_gene = None,
+    trad_gene = None,
+    traj_gene = None,
+    tra_full_length = None,
+    tra_productive = None,
+    tra_umi = None,
+    tra_reads = None,
+    tra_nt = None,
+    tra_aa = None,
+
+    trbv_gene = None,
+    trbd_gene = None,
+    trbj_gene = None,
+    trb_full_length = None,
+    trb_productive = None,
+    trb_umi = None,
+    trb_reads = None,
+    trb_nt = None,
+    trb_aa = None
+):
+    if isinstance(fpath, str):
+        raw_table = pd.read_table(fpath, index_col = 0 if index else None, sep = sep)
+    else: raw_table = fpath
+
+    barcodes = raw_table[barcode].tolist()
+    if barcode_translation is not None:
+        barcodes = [barcode_translation(x) for x in barcodes]
+    
+    tidy = { 'barcode': barcodes, 'sample': raw_table[sample].tolist() }
+    tidy = pd.DataFrame(tidy)
+
+    if trav_gene is not None: tidy['trav'] = raw_table[trav_gene].tolist()
+    if trad_gene is not None: tidy['trad'] = raw_table[trad_gene].tolist()
+    if traj_gene is not None: tidy['traj'] = raw_table[traj_gene].tolist()
+    if tra_full_length is not None: tidy['tra.full'] = raw_table[tra_full_length].tolist()
+    if tra_productive is not None: tidy['tra.productive'] = raw_table[tra_productive].tolist()
+    if tra_umi is not None: tidy['tra.umi'] = raw_table[tra_umi].tolist()
+    if tra_reads is not None: tidy['tra.reads'] = raw_table[tra_reads].tolist()
+    if tra_nt is not None: tidy['tra.nt'] = raw_table[tra_nt].tolist()
+    if tra_aa is not None: tidy['tra.aa'] = raw_table[tra_aa].tolist()
+
+    if trbv_gene is not None: tidy['trbv'] = raw_table[trbv_gene].tolist()
+    if trbd_gene is not None: tidy['trbd'] = raw_table[trbd_gene].tolist()
+    if trbj_gene is not None: tidy['trbj'] = raw_table[trbj_gene].tolist()
+    if trb_full_length is not None: tidy['trb.full'] = raw_table[trb_full_length].tolist()
+    if trb_productive is not None: tidy['trb.productive'] = raw_table[trb_productive].tolist()
+    if trb_umi is not None: tidy['trb.umi'] = raw_table[trb_umi].tolist()
+    if trb_reads is not None: tidy['trb.reads'] = raw_table[trb_reads].tolist()
+    if trb_nt is not None: tidy['trb.nt'] = raw_table[trb_nt].tolist()
+    if trb_aa is not None: tidy['trb.aa'] = raw_table[trb_aa].tolist()
+
+    present_a = \
+        (trav_gene is not None) or \
+        (trad_gene is not None) or \
+        (traj_gene is not None) or \
+        (tra_nt is not None) or \
+        (tra_aa is not None)
+    
+    present_b = \
+        (trbv_gene is not None) or \
+        (trbd_gene is not None) or \
+        (trbj_gene is not None) or \
+        (trb_nt is not None) or \
+        (trb_aa is not None)
+    
+    if present_a: tidy['tra'] = stringify_tcr(
+        tidy, 'tra', 
+        'trav'   if trav_gene is not None else None, 
+        'trad'   if trad_gene is not None else None, 
+        'traj'   if traj_gene is not None else None, 
+        'tra.nt' if tra_nt is not None else None, 
+        'tra.aa' if tra_aa is not None else None
+    )
+        
+    if present_b: tidy['trb'] = stringify_tcr(
+        tidy, 'trb', 
+        'trbv'   if trbv_gene is not None else None, 
+        'trbd'   if trbd_gene is not None else None, 
+        'trbj'   if trbj_gene is not None else None, 
+        'trb.nt' if trb_nt is not None else None, 
+        'trb.aa' if trb_aa is not None else None
+    )
+    
+    if present_a and present_b:
+        tidy['clone'] = 'tcr(' + tidy['tra'] + ', ' + tidy['trb'] + ')'
+    elif present_a: tidy['clone'] = tidy['tra']
+    elif present_b: tidy['clone'] = tidy['trb']
+
+    # assign a clone id for each.
+    indices = []
+    existing = {}
+    next_id = 1
+    clones = tidy['clone'].tolist()
+    for c in clones:
+        if c not in existing.keys():
+            indices.append('c:' + str(next_id))
+            existing[c] = 'c:' + str(next_id)
+            next_id += 1
+        else: indices.append(existing[c])
+    
+    tidy['clone.id'] = indices
+    return tidy
+
+
+def parse_tcr_10x(
+    fpath, sep = ',', barcode_translation = None, sample = '.',
+    filter_non_productive = True,
+    filter_non_full_length = True,
+):
+
+    if isinstance(fpath, str):
+        raw_table = pd.read_table(fpath, index_col = None, sep = sep)
+    else: raw_table = fpath
+
+    # filter out illegal detections
+    raw_table = raw_table.loc[raw_table['is_cell'] == True, :]
+    raw_table = raw_table.loc[raw_table['high_confidence'] == True, :]
+    if filter_non_full_length: 
+        raw_table = raw_table.loc[raw_table['full_length'] == True, :]
+    if filter_non_productive:
+        raw_table = raw_table.loc[raw_table['productive'] == True, :]
+
+    tra_contigs = raw_table.loc[
+        raw_table['chain'] == 'TRA', [
+            'barcode', 'v_gene', 'd_gene', 'j_gene', 'full_length', 'productive', 
+            'reads', 'umis', 'cdr3_nt', 'cdr3'
+        ]
+    ].copy()
+
+    trb_contigs = raw_table.loc[
+        raw_table['chain'] == 'TRB', [
+            'barcode', 'v_gene', 'd_gene', 'j_gene', 'full_length', 'productive', 
+            'reads', 'umis', 'cdr3_nt', 'cdr3'
+        ]
+    ].copy()
+
+    tra_contigs = tra_contigs.rename(columns = {
+        'v_gene'      : 'trav', 
+        'd_gene'      : 'trad', 
+        'j_gene'      : 'traj', 
+        'full_length' : 'tra.full', 
+        'productive'  : 'tra.productive', 
+        'reads'       : 'tra.reads',
+        'umis'        : 'tra.umi',
+        'cdr3_nt'     : 'tra.nt', 
+        'cdr3'        : 'tra.aa'
+    })
+
+    trb_contigs = trb_contigs.rename(columns = {
+        'v_gene'      : 'trbv', 
+        'd_gene'      : 'trbd', 
+        'j_gene'      : 'trbj', 
+        'full_length' : 'trb.full', 
+        'productive'  : 'trb.productive', 
+        'reads'       : 'trb.reads',
+        'umis'        : 'trb.umi',
+        'cdr3_nt'     : 'trb.nt', 
+        'cdr3'        : 'trb.aa'
+    })
+
+    tra_contigs.index = tra_contigs['barcode'].tolist()
+    del tra_contigs['barcode']
+    trb_contigs.index = trb_contigs['barcode'].tolist()
+    del trb_contigs['barcode']
+
+    # set to inner, should detect both alpha and beta chains
+    tidy = tra_contigs.join(trb_contigs, how = 'inner')
+    tidy['tra'] = stringify_tcr(tidy, 'tra', 'trav', 'trad', 'traj', 'tra.nt', 'tra.aa')
+    tidy['trb'] = stringify_tcr(tidy, 'trb', 'trbv', 'trbd', 'trbj', 'trb.nt', 'trb.aa')
+    tidy['clone'] = 'tcr(' + tidy['tra'] + ', ' + tidy['trb'] + ')'
+
+    # assign a clone id for each.
+    indices = []
+    existing = {}
+    next_id = 1
+    clones = tidy['clone'].tolist()
+    for c in clones:
+        if c not in existing.keys():
+            indices.append('c:' + str(next_id))
+            existing[c] = 'c:' + str(next_id)
+            next_id += 1
+        else: indices.append(existing[c])
+    
+    tidy['clone.id'] = indices
+
+    barcodes = tidy.index.tolist()
+    if barcode_translation is not None:
+        barcodes = [barcode_translation(x) for x in barcodes]
+    tidy['barcode'] = barcodes
+    tidy['sample'] = sample
+    
+    return tidy
+
+
+# obsolete. this version of tcr attachment runs extremely slowly when the dataset
+# is of bigger size. another faster version is implemented. `attach_tcr_f`
+def attach_tcr(adata, fpath):
+
+    info(f'reading tcr table from {fpath} ...')
+    tcr = pd.read_table(fpath, index_col = None, sep = '\t')
+    assert 'barcode' in tcr.columns
+    assert 'sample' in tcr.columns
+    assert 'tra' in tcr.columns
+    assert 'trb' in tcr.columns
+
+    barcode = np.array(adata.obs['barcode'].tolist())
+    sample = np.array(adata.obs['sample'].tolist())
+
+    tra = adata.obs['tra'].tolist() if 'tra' in adata.obs.keys() else ['na'] * adata.n_obs
+    trb = adata.obs['trb'].tolist() if 'trb' in adata.obs.keys() else ['na'] * adata.n_obs
+    clone = adata.obs['clone'].tolist() if 'clone' in adata.obs.keys() else ['na'] * adata.n_obs
+    cloneid = adata.obs['clone.id'].tolist() if 'clone.id' in adata.obs.keys() else ['na'] * adata.n_obs
+
+    memory = {}
+    n_not_found = 0
+    n_total_possible = 0
+    from tqdm import tqdm
+    for bc, sam, a, b, cl, cid in tqdm(zip(
+        tcr['barcode'].tolist(),
+        tcr['sample'].tolist(),
+        tcr['tra'].tolist(),
+        tcr['trb'].tolist(),
+        tcr['clone'].tolist(),
+        tcr['clone.id'].tolist()
+    ), ncols = 80):
+        # make index for fast finding
+        if sam not in memory:
+            mask = sample == sam
+            memory[sam] = {
+                'arg': np.argwhere(mask).T[0].tolist(),
+                'bc': barcode[mask].tolist()
+            }
+
+            n_total_possible += len(memory[sam]['bc'])
+        
+        if bc in memory[sam]['bc']:
+            ind = memory[sam]['bc'].index(bc)
+            ind = memory[sam]['arg'][ind]
+            tra[ind] = a
+            trb[ind] = b
+            clone[ind] = cl
+            cloneid[ind] = sample + ':' + cid
+
+        else: n_not_found += 1
+    
+    warning(f'{n_not_found} (out of {len(tcr)}) tcr detections not mapped to dataset (of size {n_total_possible}).')
+    adata.obs['tra'] = tra
+    adata.obs['trb'] = trb
+    adata.obs['clone'] = clone
+    adata.obs['clone.id'] = cloneid
+    return
+
+
+def attach_tcr_f(adata, fpath):
+
+    info(f'reading tcr table from {fpath} ...')
+    tcr = pd.read_table(fpath, index_col = None, sep = '\t')
+    assert 'barcode' in tcr.columns
+    assert 'sample' in tcr.columns
+    assert 'tra' in tcr.columns
+    assert 'trb' in tcr.columns
+    origin_name = adata.obs_names.tolist()
+
+    obs_df = adata.obs.copy()
+    obs_df.index = (adata.obs['sample'].astype('str') + ':' + adata.obs['barcode'].astype('str')).tolist()
+
+    tra = adata.obs['tra'].tolist() if 'tra' in adata.obs.keys() else ['na'] * adata.n_obs
+    trb = adata.obs['trb'].tolist() if 'trb' in adata.obs.keys() else ['na'] * adata.n_obs
+    clone = adata.obs['clone'].tolist() if 'clone' in adata.obs.keys() else ['na'] * adata.n_obs
+    cloneid = adata.obs['clone.id'].tolist() if 'clone.id' in adata.obs.keys() else ['na'] * adata.n_obs
+    
+    # clean the rows out
+    if 'tra' in obs_df.keys(): del obs_df['tra']
+    if 'trb' in obs_df.keys(): del obs_df['trb']
+    if 'clone' in obs_df.keys(): del obs_df['clone']
+    if 'clone.id' in obs_df.keys(): del obs_df['clone.id']
+    
+    tcr.index = tcr['sample'].astype('str') + ':' + tcr['barcode'].astype('str')
+    # test if tcr contains duplicated chains:
+    dup_count = tcr.index.duplicated().sum()
+    if dup_count > 0: 
+        warning(f'tcr table contains {dup_count} duplicated contigs for one cell.')
+        sort_tcr = tcr.sort_values(by = ['tra.umi', 'trb.umi'], ascending = False)
+        tcr = sort_tcr.loc[~ sort_tcr.index.duplicated(), :]
+
+    new_df = obs_df.join(tcr.loc[:, ['tra', 'trb', 'clone', 'clone.id']], how = 'left')
+    n_match = len(new_df) - new_df['clone'].isna().sum()
+    new_df.index = origin_name
+
+    # make sure the join operation do not introduce duplicates.
+    assert len(new_df) == len(origin_name)
+
+    n_tra = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['tra'].tolist(), tra)] 
+    n_trb = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['trb'].tolist(), trb)] 
+    n_clone = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['clone'].tolist(), clone)] 
+    n_cloneid = [y if str(x) == 'nan' else (s + ':' + str(x)) for x, s, y in zip(new_df['clone.id'].tolist(), new_df['sample'].tolist(), cloneid)] 
+    new_df['tra'] = n_tra
+    new_df['trb'] = n_trb
+    new_df['clone'] = n_clone
+    new_df['clone.id'] = n_cloneid
+    adata.obs = new_df
+
+    warning(f'{n_match} out of {len(tcr)} ({(100 * n_match / len(tcr)):.1f}%) tcr detections mapped.')
+    return

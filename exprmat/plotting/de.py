@@ -298,3 +298,5 @@ def marker_plot(
             gene_symbols = gene_symbols,
             **kwds,
         )
+
+    return None
