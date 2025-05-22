@@ -618,6 +618,34 @@ class experiment:
 
 
     @staticmethod
+    def remove_slot(
+        adata, sample_name, slot, names
+    ):
+        if slot not in ['obs', 'var', 'obsm', 'varm', 'obsp', 'varp', 'layers', 'uns']:
+            error(f'unsupported slot in annotated data: `{slot}`')
+        
+        for name in names:
+            ref = None
+            if slot == 'obs': ref = adata.obs
+            if slot == 'var': ref = adata.var
+            if slot == 'obsm': ref = adata.obsm
+            if slot == 'varm': ref = adata.varm
+            if slot == 'obsp': ref = adata.obsp
+            if slot == 'varp': ref = adata.varp
+            if slot == 'layers': ref = adata.layers
+            if slot == 'uns': ref = adata.uns
+
+            if ref is None:
+                error(f'unsupported slot in annotated data: `{slot}`')
+            
+            if name not in ref.keys():
+                warning(f'`{name}` does not exist in slot `{slot}`, skipped operation')
+            else: 
+                info(f'deleted `{name}` from slot `{slot}`')
+                del ref[name]
+
+
+    @staticmethod
     def rna_qc(
         adata, sample_name, mt_seqid = 'MT',
         mt_percent = 0.15,
@@ -851,7 +879,8 @@ class experiment:
 
 
     @staticmethod
-    def rna_gsea(adata, sample_name, taxa,
+    def rna_gsea(
+        adata, sample_name, taxa,
         # differential expression slots:
         de_slot, group_name = None,
         min_pct = 0.0, max_pct_reference = 1, 
@@ -867,6 +896,43 @@ class experiment:
             min_pct = min_pct, max_pct_reference = max_pct_reference,
             min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
             key_added = key_added, gene_sets = gene_sets, identifier = identifier
+        )
+    
+
+    @staticmethod
+    def rna_opa(
+        adata, sample_name, taxa,
+        # differential expression slots:
+        de_slot, group_name = None,
+        min_pct = 0.0, max_pct_reference = 1, 
+        min_lfc = None, max_lfc = None, remove_zero_pval = False,
+
+        key_added = 'gsea',
+        gene_sets = 'all',
+        identifier = 'entrez',
+        opa_cutoff = 0.05
+    ):
+        from exprmat.descriptive.gse import opa
+        return opa(
+            adata, taxa = taxa, de_slot = de_slot, group_name = None,
+            min_pct = min_pct, max_pct_reference = max_pct_reference,
+            min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
+            key_added = key_added, gene_sets = gene_sets, identifier = identifier,
+            opa_cutoff = opa_cutoff
+        )
+    
+
+    @staticmethod
+    def rna_gsva(
+        adata, sample_name, taxa,
+        identifier = 'uppercase', gene_sets = 'kegg', lognorm = 'X',
+        n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000
+    ):
+        from exprmat.descriptive.gse import gsva
+        return gsva(
+            adata, taxa = taxa, identifier = identifier, gene_sets = gene_sets,
+            lognorm = lognorm, n_cores = n_cores, kcdf = kcdf,
+            weight = weight, min_genes = min_genes, max_genes = max_genes
         )
     
 
@@ -1336,6 +1402,15 @@ class experiment:
     def run_rna_gsea(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_gsea, **kwargs)
     
+    def run_rna_opa(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_opa, **kwargs)
+    
+    def run_rna_gsva(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_gsva, **kwargs)
+    
+    def run_rna_remove_slots(self, run_on_samples = False, slot = 'obs', names = []):
+        return self.do_for_rna(run_on_samples, experiment.remove_slot, slot = slot, names = names)
+    
 
     # plotting wrappers
 
@@ -1492,7 +1567,20 @@ class experiment:
         if max_p is not None:
             df = df[df['p'] <= max_p]
         
-        df.sort_values(['p'])
+        df = df.sort_values(['fdr', 'p'])
+        return df
+    
+
+    def get_rna_opa(self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+        
+        df = pd.DataFrame(self.mudata['rna'].uns[gsea_slot])
+
+        if max_fdr is not None:
+            df = df[df['fdr'] <= max_fdr]
+        if max_p is not None:
+            df = df[df['p'] <= max_p]
+        
+        df = df.sort_values(['fdr', 'p'])
         return df
 
 

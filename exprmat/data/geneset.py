@@ -63,6 +63,7 @@ def translate_id(taxa, genes, idfrom = 'entrez', idto = 'ugene', keep_nones = Tr
         gtable = gtable[['ensembl', 'gene']].copy()
         gtable['ugene'] = gtable.index.tolist()
         gtable.index = gtable['ensembl'].tolist()
+        gtable['uppercase'] = gtable['gene'].str.upper().tolist()
 
         # deduplicate
         gtable = gtable.loc[~ gtable['ensembl'].duplicated(), :].copy()

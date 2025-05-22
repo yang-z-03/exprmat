@@ -164,11 +164,11 @@ class nesplot:
         ax1.spines["top"].set_visible(False)
         ax1.tick_params(
             axis = "both", which = "both", 
-            top = False, right = False, left = False, labelsize = 9
+            top = False, right = False, left = True, labelsize = 9
         )
         ax1.locator_params(axis = "y", nbins = 5)
         ax1.yaxis.set_major_formatter(
-            plt.FuncFormatter(lambda tick_loc, tick_num: "{:.1f}".format(tick_loc))
+            plt.FuncFormatter(lambda tick_loc, tick_num: "{:.0f}".format(tick_loc))
         )
 
 
@@ -230,9 +230,15 @@ class nesplot:
         # enrichment score plot
         ax4 = self.fig.add_axes(rect)
         ax4.plot(self._x, self.running_es, linewidth = 4, color = self.color)
-        ax4.text(0.02, 0.05, self._fdr_label, transform = ax4.transAxes, fontsize = 9)
-        ax4.text(0.02, 0.15, self._pval_label, transform = ax4.transAxes, fontsize = 9)
-        ax4.text(0.02, 0.25, self._nes_label, transform = ax4.transAxes, fontsize = 9)
+
+        if '-' in self._nes_label:
+            ax4.text(0.025, 0.05, self._fdr_label, transform = ax4.transAxes, fontsize = 9)
+            ax4.text(0.025, 0.15, self._pval_label, transform = ax4.transAxes, fontsize = 9)
+            ax4.text(0.025, 0.25, self._nes_label, transform = ax4.transAxes, fontsize = 9)
+        else:
+            ax4.text(0.975, 0.95, self._fdr_label, ha = 'right', va = 'top', transform = ax4.transAxes, fontsize = 9)
+            ax4.text(0.975, 0.85, self._pval_label, ha = 'right', va = 'top', transform = ax4.transAxes, fontsize = 9)
+            ax4.text(0.975, 0.75, self._nes_label, ha = 'right', va = 'top', transform = ax4.transAxes, fontsize = 9)
 
         # the y coords of this transformation are data, and the x coord are axes
         trans4 = transforms.blended_transform_factory(ax4.transAxes, ax4.transData)
