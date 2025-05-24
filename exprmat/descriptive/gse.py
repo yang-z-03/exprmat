@@ -104,7 +104,7 @@ def opa(
     adata, *, taxa,
 
     # differential expression slots:
-    de_slot, group_name = None,
+    de_slot, group_name = None, translate_de_slot = None,
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
 
@@ -114,39 +114,46 @@ def opa(
     opa_cutoff = 0.05,
 ):
     
-    params = adata.uns[de_slot]['params']
+    if isinstance(de_slot, list):
+        genes = de_slot
+        if translate_de_slot is not None:
+            genes = translate_id(taxa, genes, 'ugene', identifier, keep_nones = False)
 
-    # default value for convenience
-    if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
-        group_name = list(adata.uns[de_slot]['differential'].keys())[0]
-
-    info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
-    tab = adata.uns[de_slot]['differential'][group_name]
-    background = tab['names'].tolist()
-
-    if min_pct is not None and 'pct' in tab.columns:
-        tab = tab[tab['pct'] >= min_pct]
-    if max_pct_reference is not None and 'pct.reference' in tab.columns:
-        tab = tab[tab['pct.reference'] <= max_pct_reference]
-    if min_lfc is not None and 'lfc' in tab.columns:
-        tab = tab[tab['lfc'] >= min_lfc]
-    if max_lfc is not None and 'lfc' in tab.columns:
-        tab = tab[tab['lfc'] <= max_lfc]
-    if remove_zero_pval:
-        tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
+    else:
+        params = adata.uns[de_slot]['params']
     
-    tab = tab.sort_values(by = ['lfc'], ascending = False)
-    input_gnames = tab.loc[:, ['names', 'lfc']].copy()
+        # default value for convenience
+        if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
+            group_name = list(adata.uns[de_slot]['differential'].keys())[0]
+    
+        info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
+        tab = adata.uns[de_slot]['differential'][group_name]
+        
+        if min_pct is not None and 'pct' in tab.columns:
+            tab = tab[tab['pct'] >= min_pct]
+        if max_pct_reference is not None and 'pct.reference' in tab.columns:
+            tab = tab[tab['pct.reference'] <= max_pct_reference]
+        if min_lfc is not None and 'lfc' in tab.columns:
+            tab = tab[tab['lfc'] >= min_lfc]
+        if max_lfc is not None and 'lfc' in tab.columns:
+            tab = tab[tab['lfc'] <= max_lfc]
+        if remove_zero_pval:
+            tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
+        
+        tab = tab.sort_values(by = ['lfc'], ascending = False)
+        input_gnames = tab.loc[:, ['names', 'lfc']].copy()
+    
+        names = input_gnames['names'].tolist()
+        names = [x.replace('rna:', '') for x in names]
+        genes = translate_id(taxa, names, 'ugene', identifier, keep_nones = False)
 
-    names = input_gnames['names'].tolist()
-    names = [x.replace('rna:', '') for x in names]
+    background = adata.var_names.tolist()
     background = [x.replace('rna:', '') for x in background]
+    background = translate_id(taxa, background, 'ugene', identifier, keep_nones = False)
 
     import gseapy as gp
     import pandas as pd
 
-    genes = translate_id(taxa, names, 'ugene', identifier, keep_nones = False)
-    background = translate_id(taxa, background, 'ugene', identifier, keep_nones = False)
     genes = list(set(genes))
     background = list(set(background))
 

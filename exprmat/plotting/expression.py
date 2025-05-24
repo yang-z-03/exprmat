@@ -107,8 +107,8 @@ def compare_scatter(
     import numpy as np
     x = choose_layer(adata[adata.obs[key] == group_x, :], layer = slot).copy()
     y = choose_layer(adata[adata.obs[key] == group_y, :], layer = slot).copy()
-    mean_x = np.array(x.sum(axis = 0))[0]
-    mean_y = np.array(y.sum(axis = 0))[0]
+    mean_x = np.array(x.mean(axis = 0))[0]
+    mean_y = np.array(y.mean(axis = 0))[0]
     varn = adata.var['gene'].tolist()
     ann = ['annot' if x in markers else 'bg' for x in varn]
 
@@ -126,7 +126,7 @@ def compare_scatter(
 
     for x, y, name in zip(mean_x, mean_y, varn):
         if name in markers:
-            plt.text(x = x + 5, y = y + 5, s = name, fontsize = 9, color = 'black')
+            plt.text(x = x, y = y, s = name, fontsize = 9, color = 'black')
 
     if ax is None: return fig
     else: return axes.figure

@@ -16,6 +16,7 @@ from exprmat.ansi import error
 
 
 class normalize_midpoint(Normalize):
+    
     def __init__(self, vmin=None, vmax=None, vcenter=None, clip=False):
         self.vcenter = vcenter
         Normalize.__init__(self, vmin, vmax, clip)
@@ -327,3 +328,161 @@ def esplot(
 
     g.add_axes()
     return g.fig
+
+
+class heatmapplot(object):
+
+    def __init__(
+        self, df: pd.DataFrame,
+        z_score: Optional[int] = None,
+        title: Optional[str] = None,
+        figsize: Tuple[float, float] = (5, 5),
+        cmap: Optional[str] = 'turbo',
+        xticklabels: bool = True,
+        yticklabels: bool = True,
+        ax: Optional[plt.Axes] = None,
+        **kwargs
+    ):
+        self.title = "" if title is None else title
+        self.figsize = figsize
+        self.xticklabels = xticklabels
+        self.yticklabels = yticklabels
+        self.ax = ax
+
+        # scale dataframe
+        df = df.astype(float)
+        df = zscore(df, axis = z_score)
+        df = df.iloc[::-1]
+        self.data = df
+        self.cbar_title = "lognorm" if z_score is None else "scaled"
+        self.cmap = cmap
+        self._zscore = z_score
+
+
+    def _skip_ticks(self, labels, tickevery):
+
+        n = len(labels)
+        if tickevery == 0:
+            ticks, labels = [], []
+        elif tickevery == 1:
+            ticks, labels = np.arange(n) + 0.5, labels
+        else:
+            start, end, step = 0, n, tickevery
+            ticks = np.arange(start, end, step) + 0.5
+            labels = labels[start:end:step]
+        return ticks, labels
+
+
+    def _auto_ticks(self, ax, labels, axis):
+
+        transform = ax.figure.dpi_scale_trans.inverted()
+        bbox = ax.get_window_extent().transformed(transform)
+        size = [bbox.width, bbox.height][axis]
+        axis = [ax.xaxis, ax.yaxis][axis]
+        (tick,) = ax.xaxis.set_ticks([0])
+        fontsize = tick.label1.get_size()
+        max_ticks = int(size // (fontsize / 72))
+        if max_ticks < 1: tickevery = 1
+        else: tickevery = len(labels) // max_ticks + 1
+        return tickevery
+
+
+    def get_ax(self):
+
+        if (self.ax is not None) and isinstance(self.ax, plt.Axes):
+            self.fig = self.ax.figure
+            return self.ax
+        
+        elif hasattr(sys, "ps1"):
+            fig = plt.figure(figsize = self.figsize)
+        
+        else:
+            fig = Figure(figsize = self.figsize)
+            canvas = FigureCanvas(fig)
+        
+        ax = fig.add_subplot(111)
+        self.fig = fig
+        return ax
+
+
+    def draw(self):
+
+        df = self.data
+        ax = self.get_ax()
+        vmin = np.percentile(df, 2)
+        vmax = np.percentile(df, 98)
+
+        from matplotlib.ticker import MaxNLocator
+        if self._zscore is None:
+            norm = Normalize(vmin = vmin, vmax = vmax)
+            cbar_locator = MaxNLocator(nbins = 5, integer = True)
+        else:
+            norm = normalize_midpoint(vmin=vmin, vmax = vmax, vcenter = 0)
+            cbar_locator = MaxNLocator(nbins=3, symmetric = True)
+        
+        matrix = ax.pcolormesh(
+            df.values,
+            cmap = self.cmap,
+            norm = norm,
+            rasterized=True,
+        )
+
+        xstep = self._auto_ticks(ax, df.columns.values, 0)
+        ystep = self._auto_ticks(ax, df.index.values, 1)
+        xticks, xlabels = self._skip_ticks(df.columns.values, tickevery = xstep)
+        yticks, ylabels = self._skip_ticks(df.index.values, tickevery = ystep)
+        ax.set_ylim([0, len(df)])
+        ax.set(xticks = xticks, yticks = yticks)
+        ax.set_xticklabels(
+            xlabels if self.xticklabels else "", fontsize=14, rotation=90
+        )
+        ax.set_yticklabels(ylabels if self.yticklabels else "", fontsize=14)
+        ax.set_title(self.title, fontsize = 11, fontweight = "bold")
+        ax.tick_params(
+            axis = "both", which = "both", 
+            bottom = False, top = False, right = False, left = False
+        )
+        
+        cbar = self.fig.colorbar(matrix, shrink = 0.3, aspect = 10)
+        cbar.ax.yaxis.set_tick_params(
+            color = "white", direction = "in", left = True, right = True
+        )
+
+        # colorbar, make sure to specify tick locations to match desired ticklabels
+        cbar.locator = cbar_locator
+        cbar.update_ticks()
+        cbar.ax.set_title(self.cbar_title, loc = "left")
+        for key, spine in cbar.ax.spines.items():
+            spine.set_visible(False)
+
+        for side in ["top", "right", "left", "bottom"]:
+            ax.spines[side].set_visible(False)
+
+        return ax
+    
+
+def heatmap(
+    df: pd.DataFrame,
+    z_score: Optional[int] = None,
+    title: str = "",
+    figsize: Tuple[float, float] = (4, 4),
+    cmap: Optional[str] = 'turbo',
+    xticklabels: bool = True,
+    yticklabels: bool = True,
+    ax: Optional[plt.Axes] = None,
+    **kwargs
+):
+    
+    ht = heatmapplot(
+        df = df,
+        z_score = z_score,
+        title = title,
+        figsize = figsize,
+        cmap = cmap,
+        xticklabels = xticklabels,
+        yticklabels = yticklabels,
+        ax = ax, **kwargs
+    )
+
+    ax = ht.draw()
+    return ax.figure

@@ -6,7 +6,7 @@ from functools import singledispatch
 from numba import njit
 
 import numba
-from exprmat.ansi import error
+from exprmat.ansi import error, warning
 
 
 plotting_styles = {
@@ -100,6 +100,27 @@ def find_variable(adata, gene_name, layer = 'X'):
 
     else: error(f'unable to find gene `{gene_name}` in metadata or variables.')
     return vec
+
+
+def translate_variables(adata, gene_list, layer = 'X'):
+    
+    ensembls = adata.var['ensembl'].tolist()
+    index = adata.var_names.tolist()
+    names = adata.var['gene'].tolist()
+
+    target = []
+    for x in gene_list:
+        if x in ensembls:
+            target.append(index[ensembls.index(x)])
+        elif x in names:
+            target.append(index[names.index(x)])
+        elif x in index:
+            target.append(x)
+        elif ('rna:' + x) in index:
+            target.append('rna:' + x)
+        else: warning(f'unable to find gene `{x}` in variables.')
+    
+    return target
 
 
 @singledispatch

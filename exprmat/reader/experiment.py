@@ -593,6 +593,15 @@ class experiment:
         self.mudata = self.mudata[mask, :]
         info(f'keep {self.mudata.n_obs} observations from {orig}.')
 
+    
+    def exclude_nonexisting_variables(self, slot = 'rna'):
+        # remove genes that do not express (since we make a subset of the total dataset).
+        # pca doesn't allow columns that are completely made up of zeros.
+        import numpy as np
+        gene_mask = self.mudata.mod[slot].X.sum(axis = 0) <= 0.01
+        print(f'removed {gene_mask.sum()} genes with zero expression.')
+        self.mudata.mod[slot] = self.mudata.mod[slot][:, ~ gene_mask].copy()
+
 
     def find_variable(self, gene_name, slot = 'rna', layer = 'X'):
         self.check_merged(slot)
@@ -910,7 +919,8 @@ class experiment:
         key_added = 'gsea',
         gene_sets = 'all',
         identifier = 'entrez',
-        opa_cutoff = 0.05
+        opa_cutoff = 0.05,
+        **kwargs
     ):
         from exprmat.descriptive.gse import opa
         return opa(
@@ -918,7 +928,7 @@ class experiment:
             min_pct = min_pct, max_pct_reference = max_pct_reference,
             min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
             key_added = key_added, gene_sets = gene_sets, identifier = identifier,
-            opa_cutoff = opa_cutoff
+            opa_cutoff = opa_cutoff, **kwargs
         )
     
 
@@ -1159,7 +1169,7 @@ class experiment:
 
         pl = dotplot(
             adata, var_names, groupby = groupby, figsize = figsize,
-            log = log, return_fig = True, dendrogram = f'dendrogram.{groupby}',
+            log = log, return_fig = True, dendrogram = f'dendrogram.{groupby}' if dendrogram else None,
             categories_order = categories_order, expression_cutoff = expression_cutoff, 
             mean_only_expressed = mean_only_expressed, standard_scale = standard_scale, 
             title = title, colorbar_title = colorbar_title, 
@@ -1173,6 +1183,43 @@ class experiment:
         pl.show()
         pl.fig.set_dpi(dpi)
         return pl.fig
+    
+
+    @staticmethod
+    def rna_plot_heatmap(
+        adata, sample_name, var_names, groupby, dpi = 100, categories_order = None,
+        cmap = 'turbo', figsize = (4, 8), standard_scale = None, var_identifier = 'gene',
+        var_group_labels = None, show_gene_labels = None
+    ):
+        from scanpy.plotting import heatmap
+        from exprmat.data.geneset import translate_id
+        from exprmat.utils import translate_variables
+
+        if var_identifier is None:
+            if isinstance(var_names, dict):
+                for k in var_names.keys():
+                    var_names[k] = translate_variables(adata, var_names[k])
+
+            elif isinstance(var_names, list):
+                var_names = translate_variables(adata, var_names)
+
+        if (groupby is not None) and (categories_order is not None):
+            subset_adata = [x in categories_order for x in adata.obs[groupby].tolist()]
+            if np.sum(np.array(subset_adata)) < len(subset_adata):
+                subset_adata = adata[subset_adata, :]
+            else: subset_adata = adata
+        else: subset_adata = adata
+
+        pl = heatmap(
+            adata = subset_adata, var_names = var_names, groupby = groupby, swap_axes = False,
+            cmap = cmap, show = False, figsize = figsize, standard_scale = standard_scale,
+            gene_symbols = var_identifier, var_group_labels = var_group_labels,
+            var_group_rotation = 90, show_gene_labels = show_gene_labels
+            # categories_order = categories_order
+        )
+
+        pl['heatmap_ax'].figure.set_dpi(dpi)
+        return pl['heatmap_ax'].figure
     
 
     @staticmethod
@@ -1435,6 +1482,9 @@ class experiment:
     def plot_rna_dotplot(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_dot, **kwargs)
     
+    def plot_rna_heatmap(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_heatmap, **kwargs)
+    
     def plot_rna_kde(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_kde, **kwargs)
     
@@ -1519,7 +1569,6 @@ class experiment:
         if len(self.mudata['rna'].uns[de_slot]['differential']) == 1 and group_name == None:
             group_name = list(self.mudata['rna'].uns[de_slot]['differential'].keys())[0]
 
-        info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
         tab = self.mudata['rna'].uns[de_slot]['differential'][group_name]
 
         if min_pct is not None and 'pct' in tab.columns:
@@ -1535,6 +1584,10 @@ class experiment:
         if max_q is not None and 'q' in tab.columns:
             tab = tab[tab['q'] <= max_q]
         
+        info(
+            'fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '` ' + 
+            f'({len(tab)} genes)'
+        )
         tab = tab.sort_values(by = ['scores'], ascending = False)
         return tab
     

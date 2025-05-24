@@ -42,9 +42,8 @@ def get_genesets(taxa, name, identifier = 'entrez'):
         gs_desc = filtered[1]
         gs_genes = filtered[2:]
 
-        # translation
-        # gs_genes = translate_id(taxa, gs_genes, idfrom = identifier, keep_nones = False)
-        gene_set[gs_name] = gs_genes
+        if len(gs_genes) > 0:
+            gene_set[gs_name] = list(gs_genes)
     
     genome[taxa]['genesets'][name] = gene_set
     return gene_set
