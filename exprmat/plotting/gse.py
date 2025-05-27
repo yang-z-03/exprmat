@@ -5,12 +5,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import scipy.cluster.hierarchy as sch
 
 import matplotlib.pyplot as plt
 import matplotlib.transforms as transforms
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.colors import Normalize
+from matplotlib.category import UnitData
+from matplotlib.lines import Line2D
 
 from exprmat.ansi import error
 
@@ -436,7 +439,7 @@ class heatmapplot(object):
         ax.set_xticklabels(
             xlabels if self.xticklabels else "", fontsize=14, rotation=90
         )
-        ax.set_yticklabels(ylabels if self.yticklabels else "", fontsize=14)
+        ax.set_yticklabels(ylabels if self.yticklabels else "", fontsize = 9)
         ax.set_title(self.title, fontsize = 11, fontweight = "bold")
         ax.tick_params(
             axis = "both", which = "both", 
@@ -485,4 +488,405 @@ def heatmap(
     )
 
     ax = ht.draw()
+    return ax.figure
+
+
+class dotplot(object):
+    
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        x: Optional[str] = None,
+        y: str = "term",
+        hue: str = "q",
+        dot_scale: float = 5.0,
+        x_order: Optional[List[str]] = None,
+        y_order: Optional[List[str]] = None,
+        thresh: float = 0.05,
+        n_terms: int = 10,
+        title: str = "",
+        ax: Optional[plt.Axes] = None,
+        figsize: Tuple[float, float] = (6, 5.5),
+        cmap: str = 'turbo',
+        marker: str = "o",
+        ** kwargs,
+    ):
+        
+        self.marker = marker
+        self.y = y
+        self.x = x
+        self.x_order = x_order
+        self.y_order = y_order
+        self.hue = str(hue)
+        self.colname = str(hue)
+        self.figsize = figsize
+        self.cmap = cmap
+        self.ax = ax
+        self.scale = dot_scale
+        self.title = title
+        self.n_terms = n_terms
+        self.thresh = thresh
+        self.data = self.process(df)
+
+
+    def isfloat(self, x):
+        try: float(x)
+        except: return False
+        else: return True
+
+
+    def process(self, df: pd.DataFrame):
+        
+        # check if any values in `df[colname]` can't be coerced to floats
+        can_be_coerced = df[self.colname].map(self.isfloat).sum()
+        if can_be_coerced < df.shape[0]:
+            error("some value in %s could not be typecast to `float`" % self.colname)
+        # subset
+        mask = df[self.colname] <= self.thresh
+        if self.colname in ["score", "nes", "es", "or"]: mask.loc[:] = True
+
+        df = df.loc[mask]
+        if df.shape[0] < 1:
+            error("no enriched terms when cutoff = %s" % self.thresh)
+        
+        self.cbar_title = self.colname
+        
+        colnd = {
+            "fdr": "q",
+            "p": "p"
+        }
+
+        # impute the 0s in pval, fdr for visualization purpose
+        if self.colname in colnd.keys():
+            # if all values are zeros, raise error
+            if not any(df[self.colname].abs() > 0):
+                error(f"can not detetermine colormap. All values in {self.colname} are 0s")
+            df = df.sort_values(by = self.colname)
+            df[self.colname] = df[self.colname] + np.finfo(float).eps
+            df = df.assign(p_inv = np.log10(1 / df[self.colname].astype(float)))
+            _t = colnd[self.colname]
+
+            self.cbar_title = f'-log({self.colname})'
+            self.colname = "p_inv"
+
+        # get top terms; sort ascending
+        if ((self.x is not None)
+            and (self.x in df.columns)
+            and (not all(df[self.x].map(self.isfloat)))
+        ):
+
+            df = ( # if x is numeric column, get top term of each group
+                df.groupby(self.x)
+                .apply(lambda _x: _x.sort_values(by=self.colname).tail(self.n_terms))
+                .reset_index(drop=True)
+            )
+
+        else: df = df.sort_values(by=self.colname).tail(self.n_terms)  # acending
+        
+        # get scatter area
+        if df.columns.isin(["overlap", "tag"]).any():
+            ol = df.columns[df.columns.isin(["overlap", "tag"])]
+            temp = (
+                df[ol].squeeze(axis = 1).str.split("/", expand=True).astype(int)
+            )  # axis = 1, in case you have only 1 row
+            df = df.assign(hits_ratio = temp.iloc[:, 0] / temp.iloc[:, 1])
+        else: df = df.assign(hits_ratio = 1.0)  # if overlap column missing
+        return df
+
+
+    def hierarchical_clust(self, mat, method, metric) -> List[int]:
+        # mat.shape -> [n_sample, m_features]
+        Y0 = sch.linkage(mat, method = method, metric = metric)
+        Z0 = sch.dendrogram(
+            Y0, orientation = "left", no_plot = True,
+            distance_sort = "descending",
+        )
+        idx = Z0["leaves"][::-1]  # reverse the order to make the view better
+        return idx
+
+
+    def get_x_order(
+        self, method: str = "single", metric: str = "euclidean"
+    ) -> List[str]:
+        
+        if hasattr(self.x_order, "__len__"):
+            return self.x_order
+        mat = self.data.pivot(
+            index = self.y,
+            columns = self.x,
+            values = self.colname,  # [self.colname, "hits_ratio"],
+        ).fillna(0)
+        idx = self.hierarchical_clust(mat.T, method, metric)
+        return list(mat.columns[idx])
+
+
+    def get_y_order(
+        self, method: str = "single", metric: str = "euclidean"
+    ) -> List[str]:
+        
+        if hasattr(self.y_order, "__len__"):
+            return self.y_order
+        mat = self.data.pivot(
+            index = self.y,
+            columns = self.x,
+            values = self.colname,
+        ).fillna(0)
+        idx = self.hierarchical_clust(mat, method, metric)
+        return list(mat.index[idx])
+
+
+    def get_ax(self):
+        
+        if (self.ax is not None) and isinstance(self.ax, plt.Axes):
+            self.fig = self.ax.figure
+            return self.ax
+        
+        elif hasattr(sys, "ps1"): fig = plt.figure(figsize=self.figsize)
+        else:
+            fig = Figure(figsize = self.figsize)
+            canvas = FigureCanvas(fig)
+
+        ax = fig.add_subplot(111)
+        self.fig = fig
+        return ax
+
+
+    def set_x(self):
+        
+        x = self.x
+        xlabel = ""
+        
+        if (x is not None) and (x in self.data.columns):
+            if x == 'score': xlabel = 'Combined score'
+            elif x == 'or': xlabel = 'Odds ratio'
+            elif x == 'nes': xlabel = 'Normalized enrichment ratio'
+            else: xlabel = x
+        elif "score" in self.data.columns:
+            xlabel = "Combined score"
+            x = 'score'
+        elif "or" in self.data.columns:
+            xlabel = "Odds ratio"
+            x = 'or'
+        elif "nes" in self.data.columns:
+            xlabel = "Normalized ES"
+            x = 'nes'
+        
+        else:
+            # revert back to p_inv
+            x = self.colname
+            xlabel = self.cbar_title
+
+        return x, xlabel
+
+
+    def scatter(
+        self,
+        outer_ring: bool = False,
+    ):
+        
+        df = self.data.assign(
+            area = (self.data["hits_ratio"] * self.scale * plt.rcParams["lines.markersize"]).pow(2)
+        )
+
+        colmap = df[self.colname].astype(int)
+        vmin = np.percentile(colmap.min(), 2)
+        vmax = np.percentile(colmap.max(), 98)
+        ax = self.get_ax()
+        x, xlabel = self.set_x()
+        y = self.y
+
+        # if x axis is numberic, prettifiy the plot with the numberic order
+        if all(df[x].map(self.isfloat)): df = df.sort_values(by = x)
+        
+        # set x, y order if set
+        xunits = UnitData(self.get_x_order()) if self.x_order else None
+        yunits = UnitData(self.get_y_order()) if self.y_order else None
+
+        # outer ring
+        if outer_ring:
+            smax = df["area"].max()
+            
+            blk_sc = ax.scatter(
+                x = x, y = y, s = smax * 1.6,
+                edgecolors = "none", c = "black",
+                data = df, marker = self.marker,
+                xunits = xunits,  # set x categorical order
+                yunits = yunits,  # set y categorical order
+                zorder = 0,
+            )
+
+            wht_sc = ax.scatter(
+                x = x, y = y, s = smax * 1.3,
+                edgecolors = "none", c = "white",
+                data = df, marker = self.marker,
+                xunits = xunits,  # set x categorical order
+                yunits = yunits,  # set y categorical order
+                zorder = 1,
+            )
+            
+        # inner circle
+        sc = ax.scatter(
+            x = x, y = y, data = df,
+            s = "area", edgecolors = "none",
+            c = self.colname, cmap = self.cmap,
+            vmin = vmin,
+            vmax = vmax,
+            marker = self.marker,
+            xunits = xunits,  # set x categorical order
+            yunits = yunits,  # set y categorical order
+            zorder = 2,
+        )
+
+        ax.set_xlabel(xlabel, fontsize = 9)
+        ax.xaxis.set_tick_params(labelsize = 9)
+        ax.yaxis.set_tick_params(labelsize = 9)
+        ax.set_axisbelow(True)  # set grid blew other element
+        ax.grid(axis = "y", zorder = -1)  # zorder = -1.0
+        ax.margins(x = 0.5)
+        ax.set_ylim(-0.9, len(df) - 0.1)
+
+        # scatter size legend. we use the *func* argument to supply the inverse of the function
+        # used to calculate the sizes from above. The *fmt* ensures to string you want
+        handles, labels = sc.legend_elements(
+            prop = "sizes", num = 3, color = "gray",
+            func = lambda s: 100 * np.sqrt(s) / plt.rcParams["lines.markersize"] / self.scale,
+        )
+
+        # ax.legend(
+        #     handles, labels, title = "Genes in set",
+        #     bbox_to_anchor = (1.02, 0.9),
+        #     loc = "upper left",
+        #     frameon = False,
+        #     labelspacing = 2,
+        # )
+
+        ax.set_title(self.title, fontsize = 11, fontweight = "bold")
+        self.add_colorbar(sc)
+
+        return ax
+
+
+    def add_colorbar(self, sc):
+        
+        cbar = self.fig.colorbar(
+            sc, shrink = 0.3, aspect = 5,
+            anchor = (0.2, 0), location = "right"
+        )
+        
+        cbar.ax.yaxis.set_tick_params(
+            color = "white", direction = "in", 
+            left = True, right = True
+        )
+
+        # this set slightly larger
+        cbar.ax.set_title(self.cbar_title, loc = "left", fontsize = 10, pad = 15)
+        for key, spine in cbar.ax.spines.items():
+            spine.set_visible(False)
+
+
+def gsea_dotplot(
+    df: pd.DataFrame,
+    column: str = "fdr",
+    x: Optional[str] = 'nes',
+    y: str = "name",
+    x_order: Union[List[str], bool] = False,
+    y_order: Union[List[str], bool] = False,
+    title: str = "",
+    cutoff: float = 0.05,
+    top_term: int = 10,
+    size: float = 5,
+    ax: Optional[plt.Axes] = None,
+    figsize: Tuple[float, float] = (4, 6),
+    cmap: str = "turbo",
+    ofname: Optional[str] = None,
+    xticklabels_rot: Optional[float] = None,
+    yticklabels_rot: Optional[float] = None,
+    marker: str = "o",
+    show_ring: bool = False,
+    **kwargs,
+):
+    
+    dot = dotplot(
+        df = df,
+        x = x,
+        y = y,
+        x_order = x_order,
+        y_order = y_order,
+        hue = column,
+        title = title,
+        thresh = cutoff,
+        n_terms = int(top_term),
+        dot_scale = size,
+        ax = ax,
+        figsize = figsize,
+        cmap = cmap,
+        marker = marker,
+    )
+
+    ax = dot.scatter(outer_ring = show_ring)
+
+    if xticklabels_rot:
+        for label in ax.get_xticklabels():
+            label.set_ha("right")
+            label.set_rotation(xticklabels_rot)
+
+    if yticklabels_rot:
+        for label in ax.get_yticklabels():
+            label.set_ha("right")
+            label.set_rotation(yticklabels_rot)
+
+    return ax.figure
+
+
+def opa_dotplot(
+    df: pd.DataFrame,
+    column: str = "fdr",
+    x: Optional[str] = 'or',
+    y: str = "term",
+    x_order: Union[List[str], bool] = False,
+    y_order: Union[List[str], bool] = False,
+    title: str = "",
+    cutoff: float = 0.05,
+    top_term: int = 10,
+    size: float = 5,
+    ax: Optional[plt.Axes] = None,
+    figsize: Tuple[float, float] = (4, 6),
+    cmap: str = "turbo",
+    ofname: Optional[str] = None,
+    xticklabels_rot: Optional[float] = None,
+    yticklabels_rot: Optional[float] = None,
+    marker: str = "o",
+    show_ring: bool = False,
+    **kwargs,
+):
+    
+    dot = dotplot(
+        df = df,
+        x = x,
+        y = y,
+        x_order = x_order,
+        y_order = y_order,
+        hue = column,
+        title = title,
+        thresh = cutoff,
+        n_terms = int(top_term),
+        dot_scale = size,
+        ax = ax,
+        figsize = figsize,
+        cmap = cmap,
+        marker = marker,
+    )
+
+    ax = dot.scatter(outer_ring = show_ring)
+
+    if xticklabels_rot:
+        for label in ax.get_xticklabels():
+            label.set_ha("right")
+            label.set_rotation(xticklabels_rot)
+
+    if yticklabels_rot:
+        for label in ax.get_yticklabels():
+            label.set_ha("right")
+            label.set_rotation(yticklabels_rot)
+
     return ax.figure

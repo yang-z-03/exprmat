@@ -947,6 +947,44 @@ class experiment:
     
 
     @staticmethod
+    def rna_ligand_receptor(
+        adata, sample_name, flavor = 'ra', 
+        taxa_source = 'hsa', taxa_dest = 'hsa',
+        gene_symbol = None,
+        groupby = 'cell.type', use_raw = False,
+        min_cells = 5, expr_prop = 0.1,
+        # set to a smaller value. lianapy uses 1000 by default.
+        n_perms = 500, seed = 42,
+        de_method = 't-test', resource_name = 'consensus',
+        verbose = True, key_added = 'lr', n_jobs = 20
+    ):
+        adata.var['.ugene'] = adata.var_names.tolist()
+        if gene_symbol is not None: adata.var_names = adata.var[gene_symbol].tolist()
+        else: 
+            adata.var['symbol'] = [str(x) if str(x) != 'nan' else y for x, y in zip(
+                adata.var['gene'].tolist(), adata.var['ensembl'].tolist()
+            )]
+
+            adata.var.loc[adata.var['symbol'].isna(), 'symbol'] = \
+                adata.var_names[adata.var['symbol'].isna()]
+            adata.var_names = adata.var['symbol'].tolist()
+            adata.var_names_make_unique()
+
+        from exprmat.lr import flavors
+        flavors[flavor](
+            adata, taxa_source = taxa_source, taxa_dest = taxa_dest,
+            groupby = groupby, use_raw = use_raw,
+            min_cells = min_cells, expr_prop = expr_prop,
+            # set to a smaller value. lianapy uses 1000 by default.
+            n_perms = n_perms, seed = seed,
+            de_method = de_method, resource_name = resource_name,
+            verbose = verbose, key_added = key_added, n_jobs = n_jobs
+        )
+
+        adata.var_names = adata.var['.ugene'].tolist()
+    
+
+    @staticmethod
     def rna_plot_qc(adata, sample_name, **kwargs):
         from exprmat.preprocessing.plot import rna_plot_qc_metrics
         return rna_plot_qc_metrics(adata, sample_name, **kwargs)
@@ -1357,6 +1395,157 @@ class experiment:
             adata, sample_name = sample_name, title = title,
             gsea = gsea, terms = terms, figsize = figsize, colors = colors, **kwargs
         )
+    
+
+    @staticmethod
+    def rna_plot_gsea_dotplot(
+        adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05,
+        colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
+    ):
+        from exprmat.plotting.gse import gsea_dotplot
+        return gsea_dotplot(
+            experiment.rna_get_gsea(adata, gsea_key, max_fdr = max_fdr, max_p = max_p),
+            column = colour, x = 'nes', y = 'name', title = gsea_key if title is None else title,
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff
+        )
+    
+
+    @staticmethod
+    def rna_plot_opa_dotplot(
+        adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05,
+        colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
+    ):
+        from exprmat.plotting.gse import opa_dotplot
+        return opa_dotplot(
+            experiment.rna_get_opa(adata, opa_key, max_fdr = max_fdr, max_p = max_p),
+            column = colour, x = 'or', y = 'term', title = opa_key if title is None else title,
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff
+        )
+    
+
+    @staticmethod
+    def rna_plot_lr_dotplot(adata, sample_name, lr_key, uns_key = None, **kwargs):
+        from exprmat.plotting.lr import lr_dotplot
+        return lr_dotplot(adata = adata, uns_key = lr_key, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_lr_circleplot(adata, sample_name, lr_key, uns_key = None, **kwargs):
+        from exprmat.plotting.lr import circleplot
+        return circleplot(adata = adata, uns_key = lr_key, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_lr_heatmap(adata, sample_name, lr_key, uns_key = None, **kwargs):
+        from exprmat.plotting.lr import heatmap
+        return heatmap(adata = adata, uns_key = lr_key, **kwargs)
+    
+
+    @staticmethod
+    def rna_get_gsea(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+        
+        df = {
+            'name': [],
+            'es': [],
+            'nes': [],
+            'p': [],
+            'fwerp': [],
+            'fdr': [],
+            'tag': []
+        }
+
+        for gs in adata.uns[gsea_slot]['results'].keys():
+            data = adata.uns[gsea_slot]['results'][gs]
+            df['name'].append(gs)
+            df['es'].append(data['es'])
+            df['nes'].append(data['nes'])
+            df['p'].append(data['p'])
+            df['fwerp'].append(data['fwerp'])
+            df['fdr'].append(data['fdr'])
+            df['tag'].append(data['tag'])
+        
+        df = pd.DataFrame(df)
+        if max_fdr is not None:
+            df = df[df['fdr'] <= max_fdr]
+        if max_p is not None:
+            df = df[df['p'] <= max_p]
+        
+        df = df.sort_values(['fdr', 'p'])
+        return df
+    
+
+    @staticmethod
+    def rna_get_opa(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+        
+        df = pd.DataFrame(adata.uns[gsea_slot])
+
+        if max_fdr is not None:
+            df = df[df['fdr'] <= max_fdr]
+        if max_p is not None:
+            df = df[df['p'] <= max_p]
+        
+        df = df.sort_values(['fdr', 'p'])
+        return df
+    
+
+    @staticmethod
+    def rna_get_lr(
+        adata, lr_slot = 'lr', source_labels = None, target_labels = None,
+        ligand_complex = None, receptor_complex = None, 
+        filter_fun = None, top_n: int = None,
+        orderby: str | None = None,
+        orderby_ascending: bool | None = None,
+        orderby_absolute: bool = False,
+    ):
+        
+        from exprmat.plotting.lr import prepare_lr, filter_by, topn
+        liana_res = prepare_lr(
+            adata = adata,
+            liana_res = None,
+            source_labels = source_labels,
+            target_labels = target_labels,
+            ligand_complex = ligand_complex,
+            receptor_complex = receptor_complex,
+            uns_key = lr_slot
+        )
+
+        liana_res = filter_by(liana_res, filter_fun)
+        liana_res = topn(liana_res, top_n, orderby, orderby_ascending, orderby_absolute)
+        return liana_res
+
+
+    @staticmethod
+    def rna_get_markers(
+        adata, de_slot = 'markers', group_name = None, max_q = None,
+        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
+    ):
+        params = adata.uns[de_slot]['params']
+
+        # default value for convenience
+        if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
+            group_name = list(adata.uns[de_slot]['differential'].keys())[0]
+
+        tab = adata.uns[de_slot]['differential'][group_name]
+
+        if min_pct is not None and 'pct' in tab.columns:
+            tab = tab[tab['pct'] >= min_pct]
+        if max_pct_reference is not None and 'pct.reference' in tab.columns:
+            tab = tab[tab['pct.reference'] <= max_pct_reference]
+        if min_lfc is not None and 'lfc' in tab.columns:
+            tab = tab[tab['lfc'] >= min_lfc]
+        if max_lfc is not None and 'lfc' in tab.columns:
+            tab = tab[tab['lfc'] <= max_lfc]
+        if remove_zero_pval:
+            tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
+        if max_q is not None and 'q' in tab.columns:
+            tab = tab[tab['q'] <= max_q]
+        
+        info(
+            'fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '` ' + 
+            f'({len(tab)} genes)'
+        )
+        tab = tab.sort_values(by = ['scores'], ascending = False)
+        return tab
 
 
     # wrapper functions
@@ -1458,6 +1647,9 @@ class experiment:
     def run_rna_remove_slots(self, run_on_samples = False, slot = 'obs', names = []):
         return self.do_for_rna(run_on_samples, experiment.remove_slot, slot = slot, names = names)
     
+    def run_rna_ligand_receptor(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_ligand_receptor, **kwargs)
+    
 
     # plotting wrappers
 
@@ -1555,7 +1747,22 @@ class experiment:
     def plot_rna_gsea_running_es(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_gsea_running_es, **kwargs)
     
+    def plot_rna_gsea_dotplot(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_gsea_dotplot, **kwargs)
     
+    def plot_rna_opa_dotplot(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_opa_dotplot, **kwargs)
+    
+    def plot_rna_lr_heatmap(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_heatmap, **kwargs)
+    
+    def plot_rna_lr_dotplot(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_dotplot, **kwargs)
+    
+    def plot_rna_lr_circleplot(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_circleplot, **kwargs)
+    
+
     # accessor wrappers
 
     def get_rna_markers(
@@ -1563,78 +1770,49 @@ class experiment:
         min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
     ):
         self.check_merged('rna')
-        params = self.mudata['rna'].uns[de_slot]['params']
-
-        # default value for convenience
-        if len(self.mudata['rna'].uns[de_slot]['differential']) == 1 and group_name == None:
-            group_name = list(self.mudata['rna'].uns[de_slot]['differential'].keys())[0]
-
-        tab = self.mudata['rna'].uns[de_slot]['differential'][group_name]
-
-        if min_pct is not None and 'pct' in tab.columns:
-            tab = tab[tab['pct'] >= min_pct]
-        if max_pct_reference is not None and 'pct.reference' in tab.columns:
-            tab = tab[tab['pct.reference'] <= max_pct_reference]
-        if min_lfc is not None and 'lfc' in tab.columns:
-            tab = tab[tab['lfc'] >= min_lfc]
-        if max_lfc is not None and 'lfc' in tab.columns:
-            tab = tab[tab['lfc'] <= max_lfc]
-        if remove_zero_pval:
-            tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
-        if max_q is not None and 'q' in tab.columns:
-            tab = tab[tab['q'] <= max_q]
-        
-        info(
-            'fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '` ' + 
-            f'({len(tab)} genes)'
+        return experiment.rna_get_markers(
+            self.mudata['rna'], de_slot = de_slot, group_name = group_name,
+            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
+            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
         )
-        tab = tab.sort_values(by = ['scores'], ascending = False)
-        return tab
     
 
-    def get_rna_gsea(self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
-        
-        df = {
-            'name': [],
-            'es': [],
-            'nes': [],
-            'p': [],
-            'fwerp': [],
-            'fdr': [],
-            'tag': []
-        }
-
-        for gs in self.mudata['rna'].uns[gsea_slot]['results'].keys():
-            data = self.mudata['rna'].uns[gsea_slot]['results'][gs]
-            df['name'].append(gs)
-            df['es'].append(data['es'])
-            df['nes'].append(data['nes'])
-            df['p'].append(data['p'])
-            df['fwerp'].append(data['fwerp'])
-            df['fdr'].append(data['fdr'])
-            df['tag'].append(data['tag'])
-        
-        df = pd.DataFrame(df)
-        if max_fdr is not None:
-            df = df[df['fdr'] <= max_fdr]
-        if max_p is not None:
-            df = df[df['p'] <= max_p]
-        
-        df = df.sort_values(['fdr', 'p'])
-        return df
+    def get_rna_lr(
+        self, lr_slot = 'lr', source_labels = None, target_labels = None,
+        ligand_complex = None, receptor_complex = None, 
+        filter_fun = None, top_n: int = None,
+        orderby: str | None = None,
+        orderby_ascending: bool | None = None,
+        orderby_absolute: bool = False
+    ):
+        self.check_merged('rna')
+        return experiment.rna_get_lr(
+            self.mudata['rna'], lr_slot = lr_slot, source_labels = source_labels,
+            target_labels = target_labels, ligand_complex = ligand_complex,
+            receptor_complex = receptor_complex, filter_fun = filter_fun,
+            top_n = top_n, orderby = orderby, orderby_ascending = orderby_ascending,
+            orderby_absolute = orderby_absolute
+        )
     
 
-    def get_rna_opa(self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
-        
-        df = pd.DataFrame(self.mudata['rna'].uns[gsea_slot])
+    def get_rna_gsea(
+        self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05
+    ):
+        self.check_merged('rna')
+        return experiment.rna_get_gsea(
+            self.mudata['rna'], gsea_slot = gsea_slot,
+            max_fdr = max_fdr, max_p = max_p
+        )
+    
 
-        if max_fdr is not None:
-            df = df[df['fdr'] <= max_fdr]
-        if max_p is not None:
-            df = df[df['p'] <= max_p]
-        
-        df = df.sort_values(['fdr', 'p'])
-        return df
+    def get_rna_opa(
+        self, opa_slot = 'opa', max_fdr = 1.00, max_p = 0.05
+    ):
+        self.check_merged('rna')
+        return experiment.rna_get_opa(
+            self.mudata['rna'], gsea_slot = opa_slot,
+            max_fdr = max_fdr, max_p = max_p
+        )
 
 
     def save(self, fdir = None, save_samples = True):

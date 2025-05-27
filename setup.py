@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name                 = 'exprmat',
-    version              = '0.1.9',
+    version              = '0.1.10',
     description          = 'routines to process expression matrices',
     url                  = 'https://github.com/yang-z-03/exprmat',
     author               = 'Zheng Yang',
@@ -34,15 +34,20 @@ setup(
         'pynndescent',
         'gseapy',
         'metacells',
-        'sh'
+        'sh',
+        'networkx'
     ],
     include_package_data = False,
     package_data         = {
         'exprmat.data': [
             'mmu/*', 
             'mmu/genesets/*',
+            'mmu/orthologs/*',
+            'mmu/lr/*',
             'hsa/*',
-            'hsa/genesets/*'
+            'hsa/genesets/*',
+            'hsa/orthologs/*',
+            'hsa/lr/*',
         ]
     },
     zip_safe             = False

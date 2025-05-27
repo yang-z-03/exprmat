@@ -6,7 +6,7 @@ from functools import singledispatch
 from numba import njit
 
 import numba
-from exprmat.ansi import error, warning
+from exprmat.ansi import error, warning, info
 
 
 plotting_styles = {
@@ -181,3 +181,50 @@ def _(a, axis = None):
         a = a.T.tocsc()
         return _is_constant_csr_rows(a.data, a.indptr, a.shape[::-1])
     else: error('not implemented.')
+
+
+def mdata_to_adata_2(
+    mdata,
+    x_mod, y_mod,
+    x_layer = None, y_layer = None,
+    x_use_raw = False, y_use_raw = False,
+    x_transform = None,
+    y_transform = None,
+    verbose = True
+):
+    """
+    Convert a MultiData object to an AnnData object. Returns an AnnData object with the 
+    two modalities concatenated. Information related to observations (obs, obsp, obsm) 
+    and `.uns` are copied from the original MuData object.
+    """
+
+    if x_mod is None or y_mod is None:
+        error("both `x_mod` and `y_mod` must be provided.")
+
+    xdata = handle_modality(mdata, x_mod, x_use_raw, x_layer, x_transform, verbose)
+    ydata = handle_modality(mdata, y_mod, y_use_raw, y_layer, y_transform, verbose)
+
+    adata = ad.concat([xdata, ydata], axis = 1, label = 'modality')
+
+    adata.obs = mdata.obs.copy()
+    adata.obsp = mdata.obsp.copy()
+    adata.obsm = mdata.obsm.copy()
+    adata.uns = mdata.uns.copy()
+
+    return adata
+
+
+def handle_modality(mdata, mod, use_raw, layer, transform, verbose):
+    
+    if mod not in mdata.mod.keys():
+        error(f'`{mod}` is not in the mdata!')
+
+    md = mdata.mod[mod].copy()
+    if use_raw: md = md.raw.to_adata()
+    else: md.X = choose_layer(md, use_raw = use_raw, layer = layer)
+
+    if transform:
+        if verbose: info(f'transforming {mod} using {transform.__name__}')
+        md.X = transform(md.X)
+    
+    return md
