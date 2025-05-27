@@ -822,7 +822,7 @@ class experiment:
         attached_metadata_on = None, attached_metadata_across = None,
         attach_method_on = 'first', attach_method_across = 'first'
     ):
-        from exprmat.clustering.summary import summarize
+        from exprmat.descriptive.summary import summarize
         return summarize(
             adata, data = data, method = method, method_args = method_args,
             orient = orient, on = on, across = across, split = split,
@@ -830,6 +830,18 @@ class experiment:
             attached_metadata_across = attached_metadata_across,
             attach_method_on = attach_method_on,
             attach_method_across = attach_method_across
+        )
+    
+
+    @staticmethod
+    def rna_aggregate(
+        adata, sample_name, data = 'X', method = 'mean', method_args = {},
+        obs_key = 'sample', var_key = None
+    ):
+        from exprmat.descriptive.aggregate import aggregate
+        return aggregate(
+            adata, data = data, method = method, method_args = method_args,
+            obs_key = obs_key, var_key = var_key
         )
 
 
@@ -1399,27 +1411,27 @@ class experiment:
 
     @staticmethod
     def rna_plot_gsea_dotplot(
-        adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05,
+        adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
         colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
     ):
         from exprmat.plotting.gse import gsea_dotplot
         return gsea_dotplot(
             experiment.rna_get_gsea(adata, gsea_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'nes', y = 'name', title = gsea_key if title is None else title,
-            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term
         )
     
 
     @staticmethod
     def rna_plot_opa_dotplot(
-        adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05,
+        adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
         colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
     ):
         from exprmat.plotting.gse import opa_dotplot
         return opa_dotplot(
             experiment.rna_get_opa(adata, opa_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'or', y = 'term', title = opa_key if title is None else title,
-            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term
         )
     
 
@@ -1614,6 +1626,9 @@ class experiment:
     
     def run_rna_summary(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_summary, **kwargs)
+    
+    def run_rna_aggregate(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_aggregate, **kwargs)
     
     def run_rna_attach_tcr(self, run_on_samples = False):
         return self.do_for_rna(

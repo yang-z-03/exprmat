@@ -22,8 +22,12 @@ from exprmat.utils import choose_layer
 
 def summarize(
     adata, data = 'X', method = 'n', method_args = {},
-    orient = 'obs', on = 'sample', across = None,
+    
+    orient = 'obs', 
+    on = 'sample', 
+    across = None,
     split = None, 
+
     attached_metadata_on = None, attached_metadata_across = None,
     attach_method_on = 'first', attach_method_across = 'first'
 ):

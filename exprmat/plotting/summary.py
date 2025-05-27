@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from exprmat.clustering.summary import to_long_form
+from exprmat.descriptive.summary import to_long_form
 from exprmat.ansi import error, info
 
 

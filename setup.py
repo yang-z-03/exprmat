@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name                 = 'exprmat',
-    version              = '0.1.10',
+    version              = '0.1.12',
     description          = 'routines to process expression matrices',
     url                  = 'https://github.com/yang-z-03/exprmat',
     author               = 'Zheng Yang',
