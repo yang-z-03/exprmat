@@ -428,14 +428,20 @@ def lr_dotplot(
     # ax.set_facecolor('lightgrey')
     # plt.grid(True, zorder = -1)
 
-    ax.scatter(
+    p = ax.scatter(
         x = 'x', y = 'y', s = 's',
-        edgecolors = "none", c = 'c',
+        edgecolors = "lightgrey", c = 'c', cmap = cmap,
         data = pd.DataFrame(df), marker = 'o'
     )
 
-    for label in ax.get_xticklabels(): label.set_rotation(90)
+    cbar = plt.colorbar(
+        p, shrink = 0.3, aspect = 10,
+        anchor = (0.2, 0), location = "right"
+    )
 
+    cbar.ax.set_title(colour, loc = "left", fontsize = 10, pad = 15)
+
+    for label in ax.get_xticklabels(): label.set_rotation(90)
     return fig
 
 
