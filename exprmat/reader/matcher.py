@@ -251,7 +251,7 @@ def read_mtx_rna(
 
     # try:
     
-    adjust_features(src, refine_finder = True)
+    adjust_features(src, refine_finder = True, default_taxa = default_taxa)
     adata = sc.read_10x_mtx(
         src, var_names = 'gene_ids', gex_only = True, make_unique = False,
         prefix = prefix

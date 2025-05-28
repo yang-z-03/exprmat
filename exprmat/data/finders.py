@@ -142,7 +142,10 @@ def update_mapper(taxa, name, ens):
     if (name not in genome[taxa]['mapper.name'].keys()):
         if (ens in genome[taxa]['mapper.ensembl'].keys()):
             genome[taxa]['mapper.name'][name] = genome[taxa]['mapper.ensembl'][ens]
-        else: info(f'{ens} -> {name} pair could not be established.')
+        else: 
+            # info(f'{ens} -> {name} pair could not be established.')
+            # this info log is too noisy.
+            pass
 
     else:
         if (ens not in genome[taxa]['mapper.ensembl'].keys()):

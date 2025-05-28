@@ -153,6 +153,9 @@ cython_debug/
 notebooks
 
 exprmat/data/*
+!exprmat/data/mmu
+!exprmat/data/hsa
+exprmat/data/*/*.pkl
 !exprmat/data/*.py
 
 .idea
