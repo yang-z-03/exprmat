@@ -130,3 +130,22 @@ def compare_scatter(
 
     if ax is None: return fig
     else: return axes.figure
+
+
+def matrix(
+    adata, layer = 'X', obs_names = None, var_names = None, 
+    figsize = (3, 3), ax = None, **kwargs
+):
+    mat = choose_layer(adata, layer = layer)
+    
+    if ax is None: fig, ax = plt.subplots(figsize = figsize)
+    else: fig = ax.figure
+
+    ax.imshow(mat, **kwargs)
+
+    obs = adata.obs_names.tolist() if obs_names is None else adata.obs[obs_names].tolist()
+    var = adata.var_names.tolist() if var_names is None else adata.obs[var_names].tolist()
+    ax.set_xticks(range(len(var)), labels = var, rotation = 90, ha = "right", va = 'center', rotation_mode = "anchor")
+    ax.set_yticks(range(len(obs)), labels = obs)
+
+    return fig

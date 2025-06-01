@@ -24,7 +24,7 @@ import os
 
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
-from exprmat.reader.matcher import read_mtx_rna, read_h5ad_rna, read_table_rna
+from exprmat.reader.matcher import read_mtx_rna, read_h5ad_rna, read_table_rna, parse_tcr_10x
 from exprmat.reader.matcher import attach_tcr_f as attach_tcr
 from exprmat.ansi import warning, info, error, red, green
 
@@ -95,6 +95,25 @@ class experiment:
                     
                 self.modalities['rna'][i_sample].var = \
                     experiment.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
+                
+            elif i_mod == 'tcr':
+
+                # 10x tcr folder
+                tcr = parse_tcr_10x(
+                    os.path.join(i_loc, 'filtered_contig_annotations.csv'),
+                    sample = i_sample,
+                    filter_non_productive = True,
+                    filter_non_full_length = True
+                )
+
+                if not os.path.exists(os.path.join(self.directory, 'tcr')):
+                    os.makedirs(os.path.join(self.directory, 'tcr'), exist_ok = True)
+
+                tcr.to_csv(
+                    os.path.join(self.directory, 'tcr', i_sample + '.tsv.gz'), 
+                    sep = '\t', index = False
+                )
+                    
             
             else: warning(f'sample {i_sample} have no supported modalities')
 
@@ -289,6 +308,12 @@ class experiment:
                 pass
 
             pass # merging 'rna'.
+        
+
+        # integrate tcr metadata
+        if ('rna' in merged.keys()) and os.path.exists(os.path.join(self.directory, 'tcr')):
+            self.rna_attach_tcr(merged['rna'], os.path.join(self.directory, 'tcr'))
+
 
         if len(merged) > 0:
             mdata = mu.MuData(merged)
@@ -484,6 +509,9 @@ class experiment:
     
     def annotate_broadcast(self, slot = 'rna', annotation = 'cell.type', todf = None, to = 'cell.type'):
         
+        import h5py
+        from anndata.io import read_elem, write_elem
+        
         if todf is None:
             
             # broadcast to the same dataset (just a copy of non-nan values.)
@@ -522,54 +550,66 @@ class experiment:
 
             else:
                 
-                mdata = mu.read_h5mu(os.path.join(self.directory, 'subsets', todf + '.h5mu'))
-                toslot = mdata[slot].obs[to].tolist() \
-                    if to in mdata[slot].obs.columns \
-                        else [None] * mdata[slot].n_obs
-                
+                with h5py.File(os.path.join(self.directory, 'subsets', todf + '.h5mu'), 'r+') as h5f:
+                    
+                    target_df = read_elem(h5f['mod']['rna']['obs'])
+
+                    toslot = target_df[to].tolist() \
+                        if to in target_df.columns \
+                            else [None] * len(target_df)
+
+                    fromtable = pd.DataFrame({
+                        'index': self.mudata[slot].obs_names.tolist(),
+                        '.temp': self.mudata[slot].obs[annotation].tolist()
+                    })
+
+                    fromtable = fromtable.set_index('index')
+                    target_df = target_df.join(fromtable, how = 'left')
+
+                    fromslot = target_df['.temp'].tolist()
+                    target_df[to] = [
+                        x if str(x) != 'nan' else y 
+                        for x, y in zip(fromslot, toslot)
+                    ]
+
+                    del target_df['.temp']
+                    info(f'updated {annotation} to {to} in subsets/{todf}.h5mu')
+                    print(target_df[to].value_counts())
+                    target_df[to] = target_df[to].astype('category')
+
+                    write_elem(h5f, '/mod/rna/obs', target_df)
+        
+
+        elif isinstance(todf, str) and todf == 'integrated':
+            
+            with h5py.File(os.path.join(self.directory, 'integrated.h5mu'), 'r+') as h5f:
+                    
+                target_df = read_elem(h5f['mod']['rna']['obs'])
+
+                toslot = target_df[to].tolist() \
+                    if to in target_df.columns \
+                        else [None] * len(target_df)
+
                 fromtable = pd.DataFrame({
                     'index': self.mudata[slot].obs_names.tolist(),
                     '.temp': self.mudata[slot].obs[annotation].tolist()
                 })
+
                 fromtable = fromtable.set_index('index')
-                mdata[slot].obs = mdata[slot].obs.join(fromtable, how = 'left')
-                
-                fromslot = mdata[slot].obs['.temp'].tolist()
-                mdata[slot].obs[to] = [
+                target_df = target_df.join(fromtable, how = 'left')
+
+                fromslot = target_df['.temp'].tolist()
+                target_df[to] = [
                     x if str(x) != 'nan' else y 
                     for x, y in zip(fromslot, toslot)
                 ]
 
-                del mdata[slot].obs['.temp']
+                del target_df['.temp']
                 info(f'updated {annotation} to {to} in {todf}.h5mu')
-                print(mdata[slot].obs[to].value_counts())
-                mdata[slot].obs[to] = mdata[slot].obs[to].astype('category')
-                mdata.write_h5mu(os.path.join(self.directory, 'subsets', todf + '.h5mu'))
-        
-        elif isinstance(todf, str) and todf == 'integrated':
-            mdata = mu.read_h5mu(os.path.join(self.directory, 'integrated.h5mu'))
-            toslot = mdata[slot].obs[to].tolist() \
-                if to in mdata[slot].obs.columns \
-                    else [None] * mdata[slot].n_obs
-            
-            fromtable = pd.DataFrame({
-                'index': self.mudata[slot].obs_names.tolist(),
-                '.temp': self.mudata[slot].obs[annotation].tolist()
-            })
-            fromtable = fromtable.set_index('index')
-            mdata[slot].obs = mdata[slot].obs.join(fromtable, how = 'left')
-            
-            fromslot = mdata[slot].obs['.temp'].tolist()
-            mdata[slot].obs[to] = [
-                x if str(x) != 'nan' else y 
-                for x, y in zip(fromslot, toslot)
-            ]
+                print(target_df[to].value_counts())
+                target_df[to] = target_df[to].astype('category')
 
-            del mdata[slot].obs['.temp']
-            info(f'updated {annotation} to {to} in main integrated.h5mu')
-            print(mdata[slot].obs[to].value_counts())
-            mdata[slot].obs[to] = mdata[slot].obs[to].astype('category')
-            mdata.write_h5mu(os.path.join(self.directory, 'integrated.h5mu'))
+                write_elem(h5f, '/mod/rna/obs', target_df)
             
             
     def exclude(
@@ -849,7 +889,7 @@ class experiment:
     def rna_attach_tcr(adata, sample_name, searchdir):
         # automatically search the tcr folder in the root directory.
         for fpath in os.listdir(searchdir):
-            if not fpath.endswith('.tsv'): continue
+            if not (fpath.endswith('.tsv') or fpath.endswith('.tsv.gz')): continue
             attach_tcr(adata, os.path.join(searchdir, fpath))
         
         assert 'clone.id' in adata.obs.columns
@@ -861,7 +901,7 @@ class experiment:
 
 
     @staticmethod
-    def rna_calculate_tcr_metrics(adata, sample_name, expanded_clone = 2):
+    def rna_calculate_tcr_metrics(adata, sample_name, expanded_clone = 2, size_stat = 'clone.id'):
         assert 'clone.id' in adata.obs.columns
         assert 'clone' in adata.obs.columns
         assert 'tra' in adata.obs.columns
@@ -875,7 +915,15 @@ class experiment:
         # expanded tcr clone
         if 'tcr.expanded' in adata.obs.columns: del adata.obs['tcr.expanded']
         if 'tcr.clone.size' in adata.obs.columns: del adata.obs['tcr.clone.size']
-        sizes = adata.obs['clone.id'].value_counts()
+        if 'tcr.clone.sum' in adata.obs.columns: del adata.obs['tcr.clone.sum']
+        if 'tcr.clone.size.rel' in adata.obs.columns: del adata.obs['tcr.clone.size.rel']
+
+        adata.obs['tcr.clone.sum'] = 0
+        for samp in adata.obs['sample'].unique():
+            adata.obs.loc[adata.obs['sample'] == samp, 'tcr.clone.sum'] = \
+                adata.obs.loc[adata.obs['sample'] == samp, 'trab'].sum()
+        
+        sizes = adata.obs[size_stat].value_counts()
         sizes = pd.DataFrame({
             'key': sizes.keys().tolist(),
             'tcr.clone.size': sizes.values
@@ -886,10 +934,61 @@ class experiment:
         if 'na' in sizes.index:
             sizes.loc['na', 'tcr.clone.size'] = 0
         
-        ljoin = adata.obs.join(sizes, on = 'clone.id', how = 'left')
+        ljoin = adata.obs.join(sizes, on = size_stat, how = 'left')
         assert len(ljoin) == adata.n_obs
         adata.obs = ljoin
+
         adata.obs['tcr.expanded'] = adata.obs['tcr.clone.size'] > expanded_clone
+        adata.obs['tcr.clone.size.rel'] = adata.obs['tcr.clone.size'] / adata.obs['tcr.clone.sum']
+
+    
+    @staticmethod
+    def rna_aggregate_tcr_by_identity(adata, sample_name, identity = 'patient'):
+        
+        cloneid = {}
+        assert 'clone' in adata.obs.columns
+        rawclone = adata.obs['clone'].tolist()
+        patient = adata.obs[identity].tolist()
+        clid = []
+
+        for p, cl in zip(patient, rawclone):
+            if p not in cloneid: cloneid[p] = {}
+            if cl not in cloneid[p].keys(): cloneid[p][cl] = 'c:' + str(len(cloneid[p]) + 1)
+            clid.append(p + ':' + cloneid[p][cl])
+        
+        adata.obs['clone.id.' + identity] = clid
+        return
+    
+
+    @staticmethod
+    def rna_calculate_startracs_metrics(
+        adata, sample_name, 
+        clonotype = 'clone.id', cluster = 'leiden', tissue = None
+    ):
+        
+        from exprmat.descriptive.tcr import (
+            expansion, plasticity, transition, migration
+        )
+
+        expansion(adata, clonotype = clonotype, cluster = cluster)
+        plasticity(adata, clonotype = clonotype, cluster = cluster)
+        transition(adata, clonotype = clonotype, cluster = cluster)
+
+        if tissue is not None:
+            migration(adata, clonotype = clonotype, cluster = tissue)
+
+
+    @staticmethod
+    def rna_calculate_startracs_pairwise_metrics(
+        adata, sample_name, base,
+        clonotype = 'clone.id', cluster = 'leiden', key_added = 'tcr.cluster.ptrans'
+    ):
+        
+        from exprmat.descriptive.tcr import (
+            pairwise_transition
+        )
+
+        pairwise_transition(adata, base, clonotype = clonotype, cluster = cluster, key = key_added)
 
 
     @staticmethod
@@ -994,6 +1093,94 @@ class experiment:
         )
 
         adata.var_names = adata.var['.ugene'].tolist()
+    
+
+    @staticmethod
+    def rna_score_genes(
+        adata, sample_name, taxa, gene_sets,
+        identifier = 'uppercase', lognorm = 'X', random_state = 42,
+        **kwargs
+    ):
+        from scanpy.tools import score_genes
+        from exprmat.data.geneset import get_genesets, translate_id
+        from exprmat.utils import choose_layer
+
+        gs = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier)
+
+        genes = adata.var_names.tolist()
+        genes = [x.replace('rna:', '') for x in genes]
+        genes = translate_id(taxa, genes, 'ugene', identifier, keep_nones = True)
+
+        mat = choose_layer(adata, layer = lognorm)
+        temp = ad.AnnData(X = mat, var = adata.var)
+        temp.var_names = [x if x is not None else 'na' for x in genes]
+        temp.var_names_make_unique()
+
+        # score genes
+        for k in gs.keys():
+            
+            score_genes(
+                temp, gs[k], score_name = 'score.' + k,  
+                random_state = random_state, **kwargs
+            )
+
+            adata.obs['score.' + k] = temp.obs['score.' + k].tolist()
+        
+        return ['score.' + k for k in gs.keys()]
+    
+
+    @staticmethod
+    def rna_score_genes_gsva(
+        adata, sample_name, taxa, gene_sets,
+        identifier = 'uppercase', lognorm = 'X', random_state = 42,
+        n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000, **kwargs
+    ):
+        from scanpy.tools import score_genes
+        from exprmat.data.geneset import get_genesets, translate_id
+        from exprmat.utils import choose_layer
+
+        # per sample gsva
+        PER_SAMPLE = False
+
+        if PER_SAMPLE:
+
+            samples = adata.obs['sample'].unique().tolist()
+            for samp in samples:
+
+                tmp = adata[adata.obs['sample'] == samp, :].copy()
+                cellnames = tmp.obs_names.tolist()
+                df = experiment.rna_gsva(
+                    tmp, sample_name, taxa = taxa, identifier = identifier, gene_sets = gene_sets,
+                    lognorm = lognorm, n_cores = n_cores, kcdf = kcdf,
+                    weight = weight, min_genes = min_genes, max_genes = max_genes
+                )
+
+                matrix = df.X
+                # score genes
+                gsets = df.var_names.tolist()
+                for i, k in enumerate(gsets):
+                    if ('nes.' + k) not in adata.obs.keys():
+                        adata.obs['nes.' + k] = 0
+                    adata.obs.loc[cellnames, 'nes.' + k] = matrix[:, i].T.tolist()
+
+                return ['nes.' + k for k in gsets]
+            
+        else:
+
+            df = experiment.rna_gsva(
+                adata, sample_name, taxa = taxa, identifier = identifier, gene_sets = gene_sets,
+                lognorm = lognorm, n_cores = n_cores, kcdf = kcdf,
+                weight = weight, min_genes = min_genes, max_genes = max_genes
+            )
+
+            matrix = df.X
+
+            # score genes
+            gsets = df.var_names.tolist()
+            for i, k in enumerate(gsets):
+                adata.obs['nes.' + k] = matrix[:, i].T.tolist()
+
+            return ['nes.' + k for k in gsets]
     
 
     @staticmethod
@@ -1120,6 +1307,10 @@ class experiment:
             fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
             fig.set_ylabel(f'Proportion ({minor})')
             fig.set_xlabel(major)
+            fig.spines['right'].set_visible(False)
+            fig.spines['top'].set_visible(False)
+            if normalize == 'index':
+                fig.set_ylim(0, 1)
             fig.figure.tight_layout()
             return fig.figure
         
@@ -1270,6 +1461,18 @@ class experiment:
 
         pl['heatmap_ax'].figure.set_dpi(dpi)
         return pl['heatmap_ax'].figure
+    
+
+    @staticmethod
+    def adata_plot_matrix(
+        adata, sample_name, layer = 'X', obs_names = None, var_names = None,
+        figsize = (3, 3), ax = None, **kwargs
+    ):
+        from exprmat.plotting.expression import matrix
+        return matrix(
+            adata, layer = layer, obs_names = obs_names, var_names = var_names,
+            figsize = figsize, ax = ax, **kwargs
+        )
     
 
     @staticmethod
@@ -1451,6 +1654,19 @@ class experiment:
     def rna_plot_lr_heatmap(adata, sample_name, lr_key, uns_key = None, **kwargs):
         from exprmat.plotting.lr import heatmap
         return heatmap(adata = adata, uns_key = lr_key, **kwargs)
+    
+
+    @staticmethod
+    def adata_plot_sankey(adata, sample_name, obs1, obs2, exclude_values = ['na', 'nan'], **kwargs):
+        from exprmat.plotting.sankey import sankey
+        o1 = adata.obs[obs1].tolist()
+        o2 = adata.obs[obs2].tolist()
+        filters = [
+            (ox1 not in exclude_values) and (ox2 not in exclude_values) 
+            for ox1, ox2 in zip(o1, o2)
+        ]
+
+        return sankey(adata.obs.loc[filters, obs1], adata.obs.loc[filters, obs2], **kwargs)
     
 
     @staticmethod
@@ -1640,6 +1856,15 @@ class experiment:
     def run_rna_calculate_tcr_metrics(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_calculate_tcr_metrics, **kwargs)
     
+    def run_rna_aggregate_tcr_by_identity(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_aggregate_tcr_by_identity, **kwargs)
+    
+    def run_rna_calculate_startracs_metrics(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_calculate_startracs_metrics, **kwargs)
+    
+    def run_rna_calculate_startracs_pairwise_metrics(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_calculate_startracs_pairwise_metrics, **kwargs)
+    
     def run_rna_expression_mask(
         self, run_on_samples = False, gene = None, key = 'mask', 
         lognorm = 'X', threshold = 0.1, negate = False
@@ -1664,6 +1889,12 @@ class experiment:
     
     def run_rna_ligand_receptor(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_ligand_receptor, **kwargs)
+    
+    def run_rna_score_genes(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_score_genes, **kwargs)
+    
+    def run_rna_score_genes_gsva(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_score_genes_gsva, **kwargs)
     
 
     # plotting wrappers
@@ -1776,6 +2007,12 @@ class experiment:
     
     def plot_rna_lr_circleplot(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_circleplot, **kwargs)
+    
+    def plot_sankey(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.adata_plot_sankey, **kwargs)
+    
+    def plot_matrix(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.adata_plot_matrix, **kwargs)
     
 
     # accessor wrappers

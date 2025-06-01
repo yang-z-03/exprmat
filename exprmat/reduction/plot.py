@@ -292,6 +292,7 @@ def embedding(
     
     # query plotting options
     ptsize = 8,
+    size = None,
     hue_order = None,
     default_color = 'black',
     alpha = 0.8,
@@ -320,9 +321,11 @@ def embedding(
     legend_col = 1,
     add_outline = False,
     outline_color = 'black',
+    outline_margin = 20,
 
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
     cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
+    hue_norm = None, 
     legend_loc = 'right margin', frameon = 'small', fontsize = 9
 ):
     setup_styles(**plotting_styles)
@@ -332,7 +335,7 @@ def embedding(
     from exprmat.plotting import palettes
 
     embedding = adata.obsm[basis]
-    df = pd.DataFrame(embedding, columns=['x', 'y'])
+    df = pd.DataFrame(embedding, columns = ['x', 'y'])
 
     if color in adata.obs.columns:
         labels = adata.obs[color].tolist()
@@ -373,8 +376,8 @@ def embedding(
     }
 
     if add_outline:
-        sb.scatterplot(** atlas_data, color = outline_color, s = ptsize + 40)
-        sb.scatterplot(** atlas_data, color = 'white', s = ptsize + 20)
+        sb.scatterplot(** atlas_data, color = outline_color, s = ptsize + outline_margin + 20)
+        sb.scatterplot(** atlas_data, color = 'white', s = ptsize + outline_margin)
 
     if type(labels[0]) is str:
 
@@ -384,28 +387,33 @@ def embedding(
         original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
-        default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+        if cmap is not None:
+            
+            default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
+                list(palettes.all_palettes[cmap].keys())[-1]
+            ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
 
-        if f'{color}.colors' not in adata.uns.keys():
-            adata.uns[f'{color}.colors'] = default_palette
-        elif len(adata.uns[f'{color}.colors']) != len(default_palette):
-            adata.uns[f'{color}.colors'] = default_palette
-        elif not isinstance(adata.uns[f'{color}.colors'], list):
-            adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
+            if f'{color}.colors' not in adata.uns.keys():
+                adata.uns[f'{color}.colors'] = default_palette
+            elif len(adata.uns[f'{color}.colors']) != len(default_palette):
+                adata.uns[f'{color}.colors'] = default_palette
+            elif not isinstance(adata.uns[f'{color}.colors'], list):
+                adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
+
+            default_palette = adata.uns[f'{color}.colors']
+            color_key = dict(zip(
+                hue_order,
+                adata.uns[f'{color}.colors']
+            ))
         
-        default_palette = adata.uns[f'{color}.colors']
-        color_key = dict(zip(
-            hue_order,
-            adata.uns[f'{color}.colors']
-        ))
+        else: default_palette = None
         
         atlas_data['rasterized'] = rasterize
         sb.scatterplot(
-            **atlas_data, s = ptsize,
+            **atlas_data, s = ptsize if size is None else (ptsize * adata.obs[size]).tolist(),
             alpha = alpha, palette = default_palette, color = default_color,
-            hue = hue, hue_order = hue_order
+            hue = hue if default_palette is not None else None, 
+            hue_order = hue_order if default_palette is not None else None
         )
 
         if contour_plot:
@@ -507,7 +515,7 @@ def embedding(
         sb.scatterplot(
             **atlas_data, s = ptsize,
             alpha = alpha, palette = palette, color = default_color,
-            hue = labels, hue_order = None
+            hue = labels, hue_order = None, hue_norm = hue_norm
         )
     
     else:

@@ -701,65 +701,6 @@ def parse_tcr_10x(
     return tidy
 
 
-# obsolete. this version of tcr attachment runs extremely slowly when the dataset
-# is of bigger size. another faster version is implemented. `attach_tcr_f`
-def attach_tcr(adata, fpath):
-
-    info(f'reading tcr table from {fpath} ...')
-    tcr = pd.read_table(fpath, index_col = None, sep = '\t')
-    assert 'barcode' in tcr.columns
-    assert 'sample' in tcr.columns
-    assert 'tra' in tcr.columns
-    assert 'trb' in tcr.columns
-
-    barcode = np.array(adata.obs['barcode'].tolist())
-    sample = np.array(adata.obs['sample'].tolist())
-
-    tra = adata.obs['tra'].tolist() if 'tra' in adata.obs.keys() else ['na'] * adata.n_obs
-    trb = adata.obs['trb'].tolist() if 'trb' in adata.obs.keys() else ['na'] * adata.n_obs
-    clone = adata.obs['clone'].tolist() if 'clone' in adata.obs.keys() else ['na'] * adata.n_obs
-    cloneid = adata.obs['clone.id'].tolist() if 'clone.id' in adata.obs.keys() else ['na'] * adata.n_obs
-
-    memory = {}
-    n_not_found = 0
-    n_total_possible = 0
-    from tqdm import tqdm
-    for bc, sam, a, b, cl, cid in tqdm(zip(
-        tcr['barcode'].tolist(),
-        tcr['sample'].tolist(),
-        tcr['tra'].tolist(),
-        tcr['trb'].tolist(),
-        tcr['clone'].tolist(),
-        tcr['clone.id'].tolist()
-    ), ncols = 80):
-        # make index for fast finding
-        if sam not in memory:
-            mask = sample == sam
-            memory[sam] = {
-                'arg': np.argwhere(mask).T[0].tolist(),
-                'bc': barcode[mask].tolist()
-            }
-
-            n_total_possible += len(memory[sam]['bc'])
-        
-        if bc in memory[sam]['bc']:
-            ind = memory[sam]['bc'].index(bc)
-            ind = memory[sam]['arg'][ind]
-            tra[ind] = a
-            trb[ind] = b
-            clone[ind] = cl
-            cloneid[ind] = sample + ':' + cid
-
-        else: n_not_found += 1
-    
-    warning(f'{n_not_found} (out of {len(tcr)}) tcr detections not mapped to dataset (of size {n_total_possible}).')
-    adata.obs['tra'] = tra
-    adata.obs['trb'] = trb
-    adata.obs['clone'] = clone
-    adata.obs['clone.id'] = cloneid
-    return
-
-
 def attach_tcr_f(adata, fpath):
 
     info(f'reading tcr table from {fpath} ...')
@@ -771,16 +712,25 @@ def attach_tcr_f(adata, fpath):
     origin_name = adata.obs_names.tolist()
 
     obs_df = adata.obs.copy()
-    obs_df.index = (adata.obs['sample'].astype('str') + ':' + adata.obs['barcode'].astype('str')).tolist()
+    # obs_df.index = (adata.obs['sample'].astype('str') + ':' + adata.obs['barcode'].astype('str')).tolist()
+    obs_df.index = adata.obs['barcode'].astype('str').tolist()
 
     tra = adata.obs['tra'].tolist() if 'tra' in adata.obs.keys() else ['na'] * adata.n_obs
     trb = adata.obs['trb'].tolist() if 'trb' in adata.obs.keys() else ['na'] * adata.n_obs
     clone = adata.obs['clone'].tolist() if 'clone' in adata.obs.keys() else ['na'] * adata.n_obs
     cloneid = adata.obs['clone.id'].tolist() if 'clone.id' in adata.obs.keys() else ['na'] * adata.n_obs
+    trav = adata.obs['trav'].tolist() if 'trav' in adata.obs.keys() else ['na'] * adata.n_obs
+    traj = adata.obs['traj'].tolist() if 'traj' in adata.obs.keys() else ['na'] * adata.n_obs
+    trbv = adata.obs['trbv'].tolist() if 'trbv' in adata.obs.keys() else ['na'] * adata.n_obs
+    trbj = adata.obs['trbj'].tolist() if 'trbj' in adata.obs.keys() else ['na'] * adata.n_obs
     
     # clean the rows out
     if 'tra' in obs_df.keys(): del obs_df['tra']
     if 'trb' in obs_df.keys(): del obs_df['trb']
+    if 'trav' in obs_df.keys(): del obs_df['trav']
+    if 'traj' in obs_df.keys(): del obs_df['traj']
+    if 'trbv' in obs_df.keys(): del obs_df['trbv']
+    if 'trbj' in obs_df.keys(): del obs_df['trbj']
     if 'clone' in obs_df.keys(): del obs_df['clone']
     if 'clone.id' in obs_df.keys(): del obs_df['clone.id']
     
@@ -792,7 +742,13 @@ def attach_tcr_f(adata, fpath):
         sort_tcr = tcr.sort_values(by = ['tra.umi', 'trb.umi'], ascending = False)
         tcr = sort_tcr.loc[~ sort_tcr.index.duplicated(), :]
 
-    new_df = obs_df.join(tcr.loc[:, ['tra', 'trb', 'clone', 'clone.id']], how = 'left')
+    selected_cols = ['tra', 'trb', 'clone', 'clone.id']
+    if 'trav' in tcr.columns: selected_cols += ['trav']
+    if 'traj' in tcr.columns: selected_cols += ['traj']
+    if 'trbv' in tcr.columns: selected_cols += ['trbv']
+    if 'trbj' in tcr.columns: selected_cols += ['trbj']
+
+    new_df = obs_df.join(tcr.loc[:, selected_cols], how = 'left')
     n_match = len(new_df) - new_df['clone'].isna().sum()
     new_df.index = origin_name
 
@@ -803,10 +759,20 @@ def attach_tcr_f(adata, fpath):
     n_trb = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['trb'].tolist(), trb)] 
     n_clone = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['clone'].tolist(), clone)] 
     n_cloneid = [y if str(x) == 'nan' else (s + ':' + str(x)) for x, s, y in zip(new_df['clone.id'].tolist(), new_df['sample'].tolist(), cloneid)] 
+    n_trav = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['trav'].tolist(), trav)] 
+    n_traj = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['traj'].tolist(), traj)] 
+    n_trbv = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['trbv'].tolist(), trbv)] 
+    n_trbj = [y if str(x) == 'nan' else str(x) for x, y in zip(new_df['trbj'].tolist(), trbj)] 
+
     new_df['tra'] = n_tra
     new_df['trb'] = n_trb
     new_df['clone'] = n_clone
     new_df['clone.id'] = n_cloneid
+    new_df['trav'] = n_trav
+    new_df['traj'] = n_traj
+    new_df['trbv'] = n_trbv
+    new_df['trbj'] = n_trbj
+
     adata.obs = new_df
 
     warning(f'{n_match} out of {len(tcr)} ({(100 * n_match / len(tcr)):.1f}%) tcr detections mapped.')
