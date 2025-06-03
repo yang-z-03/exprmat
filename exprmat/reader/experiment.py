@@ -24,7 +24,10 @@ import os
 
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
-from exprmat.reader.matcher import read_mtx_rna, read_h5ad_rna, read_table_rna, parse_tcr_10x
+from exprmat.reader.matcher import (
+    read_mtx_rna, read_h5ad_rna, read_table_rna, 
+    parse_tcr_10x, attach_splice_reads_mtx
+)
 from exprmat.reader.matcher import attach_tcr_f as attach_tcr
 from exprmat.ansi import warning, info, error, red, green
 
@@ -67,6 +70,7 @@ class experiment:
                 continue
 
             if i_mod == 'rna':
+
                 if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
 
                 # we automatically infer from the given location names to select
@@ -96,7 +100,30 @@ class experiment:
                 self.modalities['rna'][i_sample].var = \
                     experiment.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
                 
-            elif i_mod == 'tcr':
+                # in search for spliced and unspliced reads
+
+                splicing = (
+                    (meta.dataframe['sample'] == i_sample) & 
+                    (meta.dataframe['modality'] == 'rna.splicing')
+                )
+
+                if splicing.sum() > 1:
+                    warning(f'ignored spliced reads for sample [{i_sample}], since you specify more than one.')
+                
+                elif splicing.sum() == 1:
+                    splice_loc = meta.dataframe.loc[splicing, :].iloc[0, 0]
+                    if os.path.isdir(splice_loc):
+                        self.modalities['rna'][i_sample] = attach_splice_reads_mtx(
+                            self.modalities['rna'][i_sample], 
+                            splice_loc, default_taxa = i_taxa,
+                            sample = i_sample
+                        )
+                
+                else: pass
+
+
+            elif i_mod == 'rna.splicing': pass
+            elif i_mod == 'rna.tcr':
 
                 # 10x tcr folder
                 tcr = parse_tcr_10x(
@@ -207,6 +234,15 @@ class experiment:
 
                 if 'counts' in self.modalities['rna'][rnak].layers.keys():
                     filtered[rnak].layers['counts'] = self.modalities['rna'][rnak].layers['counts']
+
+                if 'spliced' in self.modalities['rna'][rnak].layers.keys():
+                    filtered[rnak].layers['spliced'] = self.modalities['rna'][rnak].layers['spliced']
+
+                if 'unspliced' in self.modalities['rna'][rnak].layers.keys():
+                    filtered[rnak].layers['unspliced'] = self.modalities['rna'][rnak].layers['unspliced']
+
+                if 'ambiguous' in self.modalities['rna'][rnak].layers.keys():
+                    filtered[rnak].layers['ambiguous'] = self.modalities['rna'][rnak].layers['ambiguous']
 
                 if subset_dict is not None:
                     if rnak not in subset_dict.keys():
@@ -331,6 +367,8 @@ class experiment:
             self.metadata.dataframe['modality'].tolist(),
             self.metadata.dataframe['sample'].tolist()
         ):
+            if '.' in mod: continue
+
             results[samp] = None
             do = False
             if samples is None: do = True
@@ -2187,6 +2225,7 @@ class experiment:
                 self.metadata.dataframe['modality'], 
                 self.metadata.dataframe['taxa']
             ):
+                if '.' in i_mod: continue
                 loaded = False
                 if (self.modalities is not None) and \
                    (i_mod in self.modalities.keys()) and \
@@ -2220,6 +2259,7 @@ def load_experiment(direc, load_samples = True, load_subset = None):
     modalities = {}
     if load_samples:
         for modal, samp in zip(meta.dataframe['modality'], meta.dataframe['sample']):
+            if '.' in modal: continue
             attempt = os.path.join(direc, modal, samp + '.h5ad')
             if os.path.exists(attempt):
                 if modal not in modalities.keys(): modalities[modal] = {}

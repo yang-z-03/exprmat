@@ -1,11 +1,11 @@
 
 import numpy as np
 import pandas as pd
-from typing import Literal, Optional, Union
-from scipy.sparse import spmatrix
+from typing import Literal, Optional
 import torch
 
 from exprmat.ansi import warning
+
 
 def mde(
     data, device: Optional[Literal['cpu', 'cuda']] = None, **kwargs,

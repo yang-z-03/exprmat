@@ -197,8 +197,8 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
             'v2': ['Gene Expression'] * len(query_gname)
         })
 
-        print(f'[{path}] {n_not_found} genes not found in reference when matching gene names.')
-        print(f'[{path}] {len(finder_gname)} genes in reference genome annotation')
+        info(f'[adjust] {n_not_found} genes not found in reference when matching gene names.')
+        info(f'[adjust] {len(finder_gname)} genes in reference genome annotation')
 
     construct.to_csv(
         os.path.join(path, 'features.tsv.gz'), 
@@ -252,6 +252,10 @@ def read_mtx_rna(
     # try:
     
     adjust_features(src, refine_finder = True, default_taxa = default_taxa)
+
+    import warnings
+    warnings.filterwarnings('ignore')
+
     adata = sc.read_10x_mtx(
         src, var_names = 'gene_ids', gex_only = True, make_unique = False,
         prefix = prefix
@@ -266,6 +270,8 @@ def read_mtx_rna(
         adata, metadata, sample, 
         force_filter = raw, default_taxa = default_taxa
     )
+
+    warnings.filterwarnings('default')
     
     del adata
     return final
@@ -465,7 +471,7 @@ def match_matrix_rna(
 
     info(f'{len(not_in_list)} genes (out of {len(gname)}) not in the reference gene list.')
     info(f'total {len(names)} genes mapped. {len(np.unique(names))} unique genes.')
-
+    
     # attach cell metadata onto the obs slot.
     
     for k in props.index.tolist():
@@ -777,3 +783,124 @@ def attach_tcr_f(adata, fpath):
 
     warning(f'{n_match} out of {len(tcr)} ({(100 * n_match / len(tcr)):.1f}%) tcr detections mapped.')
     return
+
+
+def attach_splice_reads_mtx(adata, folder, default_taxa, sample):
+    '''
+    Attach MGI DNBC4 flavor output spliced/unspliced matrices. The folder of spliced reads contains
+    barcodes.tsv.gz, features.tsv.gz, spanning, spliced and unspliced matrix files. Note that the
+    order and content of the features may not match the given adata.
+    '''
+
+    features = pd.read_table(os.path.join(folder, 'features.tsv.gz'), sep = '\t', header = None)
+    features = features.iloc[:, 0].tolist()
+
+    from scipy.io import mmread
+    from scipy.sparse import csr_matrix
+    import gzip
+    import io
+
+    with gzip.open(os.path.join(folder, 'spliced.mtx.gz'), 'rb') as f:
+        with io.TextIOWrapper(f, encoding = 'utf-8') as enc:
+            spliced = mmread(enc)
+        
+    with gzip.open(os.path.join(folder, 'unspliced.mtx.gz'), 'rb') as f:
+        with io.TextIOWrapper(f, encoding = 'utf-8') as enc:
+            unspliced = mmread(enc)
+    
+    with gzip.open(os.path.join(folder, 'spanning.mtx.gz'), 'rb') as f:
+        with io.TextIOWrapper(f, encoding = 'utf-8') as enc:
+            ambiguous = mmread(enc)
+    
+    barcodes = pd.read_table(os.path.join(folder, 'barcodes.tsv.gz'), sep = '\t', header = None)
+    barcodes = barcodes.iloc[:, 0].tolist()
+
+    # make annotated data
+    adata_f = ad.AnnData(
+        X = csr_matrix((len(barcodes), len(features)), dtype = np.float32)
+    )
+    
+    adata_f.obs_names = barcodes
+    adata_f.var_names = features
+    adata_f.layers['spliced'] = spliced.T.tocsr()
+    adata_f.layers['unspliced'] = unspliced.T.tocsr()
+    adata_f.layers['ambiguous'] = ambiguous.T.tocsr()
+
+    # map gene naming
+    gname = features
+    names = []
+    gmask = []
+
+    # here, we just add another condition to test whether the gname list is appropriate
+    # ensembl format. if it is not, we try to map genes directly onto the names.
+    # though i specify the var_names should be 'gene_ids', it may occur exceptions
+    # where there are man-made references containing two or more species. by convention
+    # in these double species reference, the 'gene_ids' should be 'mm10_ENSMUSG...'
+    # or just name of the genes.
+
+    default_finder_ens = get_mapper_ensembl(default_taxa)
+    default_finder_name = get_mapper_name(default_taxa)
+    not_in_list = []
+
+    for x in gname:
+
+        if '_' in x:
+
+            reference_name = x.split('_')[0]
+            pure_nm = x.replace(reference_name + '_', '')
+
+            if not reference_name in cfg['taxa.reference'].keys():
+                warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
+                gmask.append(False)
+                not_in_list.append(x)
+                continue
+
+            reference_taxa = cfg['taxa.reference'][reference_name]
+            alt_finder_name = get_mapper_name(reference_taxa)
+            alt_finder_ens = get_mapper_ensembl(reference_taxa)
+
+            if pure_nm in alt_finder_ens.keys():
+                gmask.append(True)
+                names.append(alt_finder_ens[pure_nm])
+                continue
+            
+            if pure_nm in alt_finder_name.keys():
+                gmask.append(True)
+                names.append(alt_finder_name[pure_nm])
+                continue
+        
+        if x in default_finder_ens.keys():
+            gmask.append(True)
+            names.append(default_finder_ens[x])
+            continue
+        
+        if x in default_finder_name.keys():
+            gmask.append(True)
+            names.append(default_finder_name[x])
+            continue
+            
+        gmask.append(False)
+        not_in_list.append(x)
+
+    final = adata_f[:, gmask].copy()
+    del adata_f
+    final.var_names = ['rna:' + x for x in names]
+    # remove duplicated genes
+    duplicated = set(final.var_names[final.var_names.duplicated()].tolist())
+    final = final[:, final.var_names.duplicated() == False].copy()
+    final.obs_names = sample + ':' + final.obs_names
+
+    # by now the variable names are identical, while the obs names should match
+    # those in the obs['barcode']
+
+    adata = adata[
+        [x in final.obs_names for x in adata.obs['barcode'].tolist()],
+        [x in final.var_names for x in adata.var_names.tolist()]
+    ].copy()
+
+    final = final[adata.obs['barcode'], adata.var_names].copy()
+    adata.layers['spliced'] = final.layers['spliced']
+    adata.layers['unspliced'] = final.layers['unspliced']
+    adata.layers['ambiguous'] = final.layers['ambiguous']
+
+    return adata
