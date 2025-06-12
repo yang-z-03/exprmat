@@ -370,6 +370,16 @@ def read_h5ad_rna(
     #     warning(str(ex))
     #     return None
 
+    if adata.var_names.tolist()[0].startswith('rna:'):
+        info('it seems that you have prepared the h5ad file manually.')
+        info('we will not alter anything and test mandatory columns as is.')
+        assert 'sample' in adata.obs.keys()
+        assert 'modality' in adata.obs.keys()
+        assert 'taxa' in adata.obs.keys()
+        assert 'batch' in adata.obs.keys()
+        assert 'gene' in adata.var.keys()
+        return adata
+    
     final = match_matrix_rna(
         adata, metadata, sample, 
         force_filter = raw, default_taxa = default_taxa,
@@ -500,8 +510,8 @@ def stringify_tcr(df, contig, v, d, j, nt, aa):
         else: clone = 'vj(' + df[v] + ', ' + df[j] + ')'
     
     # aa alone may show degrees of degeneration!
-    if nt is not None: clone = clone + (', ' if clone is not None else '') + 'nt(' + df[nt] + ')'
-    elif aa is not None: clone = clone + (', ' if clone is not None else '') + 'aa(' + df[aa] + ')'
+    if nt is not None: clone = clone + (', ' if clone != '' else '') + 'nt(' + df[nt] + ')'
+    elif aa is not None: clone = clone + (', ' if clone != '' else '') + 'aa(' + df[aa] + ')'
     return f'{contig}(' + clone + ')' 
 
 
@@ -707,7 +717,7 @@ def parse_tcr_10x(
     return tidy
 
 
-def attach_tcr_f(adata, fpath):
+def attach_tcr(adata, fpath):
 
     info(f'reading tcr table from {fpath} ...')
     tcr = pd.read_table(fpath, index_col = None, sep = '\t')
@@ -825,6 +835,108 @@ def attach_splice_reads_mtx(adata, folder, default_taxa, sample):
     adata_f.layers['spliced'] = spliced.T.tocsr()
     adata_f.layers['unspliced'] = unspliced.T.tocsr()
     adata_f.layers['ambiguous'] = ambiguous.T.tocsr()
+
+    # map gene naming
+    gname = features
+    names = []
+    gmask = []
+
+    # here, we just add another condition to test whether the gname list is appropriate
+    # ensembl format. if it is not, we try to map genes directly onto the names.
+    # though i specify the var_names should be 'gene_ids', it may occur exceptions
+    # where there are man-made references containing two or more species. by convention
+    # in these double species reference, the 'gene_ids' should be 'mm10_ENSMUSG...'
+    # or just name of the genes.
+
+    default_finder_ens = get_mapper_ensembl(default_taxa)
+    default_finder_name = get_mapper_name(default_taxa)
+    not_in_list = []
+
+    for x in gname:
+
+        if '_' in x:
+
+            reference_name = x.split('_')[0]
+            pure_nm = x.replace(reference_name + '_', '')
+
+            if not reference_name in cfg['taxa.reference'].keys():
+                warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
+                gmask.append(False)
+                not_in_list.append(x)
+                continue
+
+            reference_taxa = cfg['taxa.reference'][reference_name]
+            alt_finder_name = get_mapper_name(reference_taxa)
+            alt_finder_ens = get_mapper_ensembl(reference_taxa)
+
+            if pure_nm in alt_finder_ens.keys():
+                gmask.append(True)
+                names.append(alt_finder_ens[pure_nm])
+                continue
+            
+            if pure_nm in alt_finder_name.keys():
+                gmask.append(True)
+                names.append(alt_finder_name[pure_nm])
+                continue
+        
+        if x in default_finder_ens.keys():
+            gmask.append(True)
+            names.append(default_finder_ens[x])
+            continue
+        
+        if x in default_finder_name.keys():
+            gmask.append(True)
+            names.append(default_finder_name[x])
+            continue
+            
+        gmask.append(False)
+        not_in_list.append(x)
+
+    final = adata_f[:, gmask].copy()
+    del adata_f
+    final.var_names = ['rna:' + x for x in names]
+    # remove duplicated genes
+    duplicated = set(final.var_names[final.var_names.duplicated()].tolist())
+    final = final[:, final.var_names.duplicated() == False].copy()
+    final.obs_names = sample + ':' + final.obs_names
+
+    # by now the variable names are identical, while the obs names should match
+    # those in the obs['barcode']
+
+    adata = adata[
+        [x in final.obs_names for x in adata.obs['barcode'].tolist()],
+        [x in final.var_names for x in adata.var_names.tolist()]
+    ].copy()
+
+    final = final[adata.obs['barcode'], adata.var_names].copy()
+    adata.layers['spliced'] = final.layers['spliced']
+    adata.layers['unspliced'] = final.layers['unspliced']
+    adata.layers['ambiguous'] = final.layers['ambiguous']
+
+    return adata
+
+
+def attach_splice_reads_loom(adata, loom_file, default_taxa, sample):
+    '''
+    Attach Loom format of spliced/unspliced matrices.
+    Typically from outputs of velocyto.
+    '''
+
+    # this typically gives a following result:
+    # AnnData object with n_obs × n_vars = 55321 × 33696
+    #   var: 'Accession', 'Chromosome', 'End', 'Start', 'Strand'
+    #   layers: 'ambiguous', 'matrix', 'spliced', 'unspliced'
+
+    adata_f = sc.read_loom(
+        loom_file, sparse = True, cleanup = False, 
+        X_name = 'matrix', obs_names = 'CellID', obsm_names = None, 
+        var_names = 'Gene', varm_names = None, dtype = 'float32'
+    )
+
+    features = adata_f.var_names.tolist()
+    # rename observations
+    observs = [x[x.index(':') + 1:-1] for x in adata_f.obs_names]
+    adata_f.obs_names = observs
 
     # map gene naming
     gname = features

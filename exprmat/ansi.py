@@ -1,17 +1,8 @@
 
-# ./shared/ansi.py:
-#   provides basic ansi console coloring and cursor manipulation support.
-#   considering adding later another alternative implementation of the same 
-#   interface for terminal/emulators that do not support ansi.
-# 
-# license: gplv3. <https://www.gnu.org/licenses>
-# contact: yang-z <xornent at outlook dot com>
-
 import re
 import os
 import sys
 
-# foregrounds -----------------------------------------------------------------
 
 def fore_black() -> None:
     print('\033[30m', end = '')
@@ -40,13 +31,11 @@ def fore_white() -> None:
 def fore_gray() -> None:
     print('\033[8m', end = '')
 
-# reset ansi controls ---------------------------------------------------------
-    
+
 def ansi_reset() -> None:
     print('\033[0m', end = '')
 
-# backgrounds -----------------------------------------------------------------
-    
+
 def back_black() -> None:
     print('\033[40m', end = '')
 
@@ -71,7 +60,6 @@ def back_cyan() -> None:
 def back_white() -> None:
     print('\033[47m', end = '')
 
-# cursor operations
 
 def ansi_move_cursor(line: int, col: int) -> None:
     if line == 0: pass
@@ -82,8 +70,6 @@ def ansi_move_cursor(line: int, col: int) -> None:
     elif col > 0: print('\033[{0}C'.format(str(col)), end = '', flush = True) # moves right
     elif col < 0: print('\033[{0}D'.format(str(-col)), end = '', flush = True) # moves left
 
-def fill_blank(blanks: int) -> None:
-    print(' ' * blanks, end = '', flush = True)
 
 def common_length(string: str, limit: int) -> str:
 
@@ -109,34 +95,27 @@ def common_length(string: str, limit: int) -> str:
         
     else: return ('{:<' + str(limit - cn_length) + '}').format(string)
 
+
 def fill_blank(blanks: int, string: str) -> None:
     print(common_length(string, blanks), end = '', flush = True)
 
-def line_start() -> None:
-    print('\r', end = '')
 
-def print_message(color, title, path, overwrite = True):
-    if overwrite:
-        print('\r{0}[{1}]\033[0m'.format(color, title), common_length(path, 70), end = '')
-        return '{0}[{1}]\033[0m'.format(color, title) + ' ' + common_length(path, 70)
-    else:
-        print('{0}[{1}]\033[0m'.format(color, title), common_length(path, 70))
-        return '{0}[{1}]\033[0m'.format(color, title) + ' ' + common_length(path, 70)
-    
 def format_file_size(size):
     for suffix in ['B', 'KiB', 'MiB', 'GiB', 'TiB']:
         if size < 1024.0 or suffix == 'TiB': break
         size /= 1024.0
     return f"{size:.2f} {suffix}"
 
-# prompt messages -------------------------------------------------------------
-    
-def error(text: str) -> None:
+
+def error(text: str, error = None) -> None:
     fore_red()
     print('[error]', end = ' ')
     ansi_reset()
     print(text)
-    raise Exception()
+
+    if error is None: raise Exception(text)
+    else: raise Exception(text) from error
+
 
 def warning(text: str) -> None:
     fore_yellow()
@@ -145,12 +124,14 @@ def warning(text: str) -> None:
     print(text)
     ansi_reset()
 
+
 def info(text: str) -> None:
     fore_cyan()
     print('[i]', end = ' ')
     ansi_reset()
     print(text)
     ansi_reset()
+
 
 def clear():
     # for windows
@@ -159,6 +140,7 @@ def clear():
 
     # for mac and linux(here, os.name is 'posix')
     else: os.system('clear')
+
 
 def red(x): return '\033[31m' + x + '\033[0m'
 def green(x): return '\033[32m' + x + '\033[0m'

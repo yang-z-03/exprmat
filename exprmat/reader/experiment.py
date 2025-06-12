@@ -26,9 +26,9 @@ from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import (
     read_mtx_rna, read_h5ad_rna, read_table_rna, 
-    parse_tcr_10x, attach_splice_reads_mtx
+    parse_tcr_10x, attach_splice_reads_mtx, attach_splice_reads_loom
 )
-from exprmat.reader.matcher import attach_tcr_f as attach_tcr
+from exprmat.reader.matcher import attach_tcr
 from exprmat.ansi import warning, info, error, red, green
 
 
@@ -111,6 +111,10 @@ class experiment:
                     warning(f'ignored spliced reads for sample [{i_sample}], since you specify more than one.')
                 
                 elif splicing.sum() == 1:
+                    
+                    import warnings
+                    warnings.filterwarnings('ignore')
+
                     splice_loc = meta.dataframe.loc[splicing, :].iloc[0, 0]
                     if os.path.isdir(splice_loc):
                         self.modalities['rna'][i_sample] = attach_splice_reads_mtx(
@@ -118,6 +122,16 @@ class experiment:
                             splice_loc, default_taxa = i_taxa,
                             sample = i_sample
                         )
+
+                    elif splice_loc.endswith('.loom'):
+                        self.modalities['rna'][i_sample] = attach_splice_reads_loom(
+                            self.modalities['rna'][i_sample], 
+                            splice_loc, default_taxa = i_taxa,
+                            sample = i_sample
+                        )
+                    
+                    else: error('skipped spliced matrix, not valid data format.')
+                    warnings.filterwarnings('default')
                 
                 else: pass
 
@@ -198,7 +212,7 @@ class experiment:
     
 
     def merge(
-        self, join = 'outer', variable_columns = [],
+        self, join = 'outer', obsms = [], variable_columns = [],
         bool_merge_behavior = 'or',
         numeric_merge_behavior = 'mean',
         string_merge_behavior = 'unique_concat', string_merge_sep = ';',
@@ -243,6 +257,9 @@ class experiment:
 
                 if 'ambiguous' in self.modalities['rna'][rnak].layers.keys():
                     filtered[rnak].layers['ambiguous'] = self.modalities['rna'][rnak].layers['ambiguous']
+                
+                for obsm in obsms:
+                    filtered[rnak].obsm[obsm] = self.modalities['rna'][rnak].obsm[obsm]
 
                 if subset_dict is not None:
                     if rnak not in subset_dict.keys():
@@ -353,8 +370,6 @@ class experiment:
 
         if len(merged) > 0:
             mdata = mu.MuData(merged)
-            mdata.push_obs()
-            mdata.push_var()
             self.mudata = mdata
 
         else: self.mudata = None
@@ -473,14 +488,15 @@ class experiment:
     
     def build_subset(
         self, subset_name, slot = 'rna',
-        values = None, keys = 'sample'
+        values = None, keys = ['sample']
     ):
         self.check_merged(slot)
+        self.pull()
 
         masks = []
-        final = np.array([True] * self.mudata[slot].n_obs, dtype = np.bool)
+        final = np.array([True] * self.mudata.n_obs, dtype = np.bool)
         for idx in range(len(keys)):
-            masks += [np.array([x in values[idx] for x in self.mudata[slot].obs[keys[idx]].tolist()])]
+            masks += [np.array([x in values[idx] for x in self.mudata.obs[f'{slot}:{keys[idx]}'].tolist()])]
         
         for mask in masks: final = final & mask
         subset = self.mudata[final, :].copy()
@@ -491,7 +507,7 @@ class experiment:
         
         subset.write_h5mu(os.path.join(self.directory, 'subsets', subset_name + '.h5mu'))
 
-    
+
     def annotate(
         self, slot = 'rna', annotation = 'cell.type',
         mapping = {}, cluster = 'leiden'
@@ -656,6 +672,24 @@ class experiment:
         self.check_merged(slot)
         ls = self.mudata[slot].obs[annotation].tolist()
         mask = [x not in remove for x in ls]
+        orig = self.mudata.n_obs
+        self.mudata = self.mudata[mask, :]
+        info(f'keep {self.mudata.n_obs} observations from {orig}.')
+
+
+    def exclude_outlier(
+        self, slot = 'rna', embedding = 'umap', xlim = (-5, 5), ylim = (-5, 5)
+    ):
+        self.check_merged(slot)
+        assert embedding in self.mudata[slot].obsm
+        assert self.mudata[slot].obsm[embedding].shape[1] == 2
+        mask = (
+            (self.mudata[slot].obsm[embedding][:, 0] >= xlim[0]) &
+            (self.mudata[slot].obsm[embedding][:, 0] <= xlim[1]) &
+            (self.mudata[slot].obsm[embedding][:, 1] >= ylim[0]) &
+            (self.mudata[slot].obsm[embedding][:, 1] <= ylim[1])
+        )
+
         orig = self.mudata.n_obs
         self.mudata = self.mudata[mask, :]
         info(f'keep {self.mudata.n_obs} observations from {orig}.')
@@ -856,6 +890,25 @@ class experiment:
     def rna_umap(adata, sample_name, **kwargs):
         from exprmat.reduction import run_umap
         run_umap(adata, **kwargs)
+
+    
+    @staticmethod
+    def rna_mde(adata, sample_name, data = 'pca', key_added = 'mde', **kwargs):
+        from exprmat.reduction.mde import mde
+        emb = mde(adata.obsm[data], **kwargs)
+        adata.obsm[key_added] = emb
+
+    
+    @staticmethod
+    def rna_mde_fit(
+        adata, sample_name, data = 'pca', 
+        based = 'umap', mask_key = 'sample', mask_values = [], 
+        key_added = 'mde', **kwargs
+    ):
+        from exprmat.reduction.mde import mde_fit
+        mask = [x in mask_values for x in adata.obs[mask_key]]
+        emb = mde_fit(adata.obsm[data], fit = adata.obsm[based], fit_mask = mask, **kwargs)
+        adata.obsm[key_added] = emb
 
 
     @staticmethod
@@ -1088,11 +1141,13 @@ class experiment:
         n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000
     ):
         from exprmat.descriptive.gse import gsva
-        return gsva(
+        gsva_df = gsva(
             adata, taxa = taxa, identifier = identifier, gene_sets = gene_sets,
             lognorm = lognorm, n_cores = n_cores, kcdf = kcdf,
             weight = weight, min_genes = min_genes, max_genes = max_genes
         )
+
+        return gsva_df
     
 
     @staticmethod
@@ -1143,7 +1198,9 @@ class experiment:
         from exprmat.data.geneset import get_genesets, translate_id
         from exprmat.utils import choose_layer
 
-        gs = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier)
+        if isinstance(gene_sets, str):
+            gs = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier)
+        else: gs = gene_sets
 
         genes = adata.var_names.tolist()
         genes = [x.replace('rna:', '') for x in genes]
@@ -1171,7 +1228,8 @@ class experiment:
     def rna_score_genes_gsva(
         adata, sample_name, taxa, gene_sets,
         identifier = 'uppercase', lognorm = 'X', random_state = 42,
-        n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000, **kwargs
+        n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000, 
+        append_to_obs = False, **kwargs
     ):
         from scanpy.tools import score_genes
         from exprmat.data.geneset import get_genesets, translate_id
@@ -1194,14 +1252,17 @@ class experiment:
                 )
 
                 matrix = df.X
-                # score genes
-                gsets = df.var_names.tolist()
-                for i, k in enumerate(gsets):
-                    if ('nes.' + k) not in adata.obs.keys():
-                        adata.obs['nes.' + k] = 0
-                    adata.obs.loc[cellnames, 'nes.' + k] = matrix[:, i].T.tolist()
 
-                return ['nes.' + k for k in gsets]
+                if append_to_obs:
+                    # score genes
+                    gsets = df.var_names.tolist()
+                    for i, k in enumerate(gsets):
+                        if ('nes.' + k) not in adata.obs.keys():
+                            adata.obs['nes.' + k] = 0
+                        adata.obs.loc[cellnames, 'nes.' + k] = matrix[:, i].T.tolist()
+
+                    return ['nes.' + k for k in gsets]
+                else: return df
             
         else:
 
@@ -1213,12 +1274,33 @@ class experiment:
 
             matrix = df.X
 
-            # score genes
-            gsets = df.var_names.tolist()
-            for i, k in enumerate(gsets):
-                adata.obs['nes.' + k] = matrix[:, i].T.tolist()
+            if append_to_obs:
+                # score genes
+                gsets = df.var_names.tolist()
+                for i, k in enumerate(gsets):
+                    adata.obs['nes.' + k] = matrix[:, i].T.tolist()
+                return ['nes.' + k for k in gsets]
+            
+            else: return df
 
-            return ['nes.' + k for k in gsets]
+
+    @staticmethod
+    def rna_velocity(
+        adata, sample_name, 
+        neighbor_key: str = 'neighbors', neighbor_connectivity: str = 'connectivities', 
+        n_neighbors: int = 35, hvg: str = 'vst.norm', velocity_key: str = 'velocity', 
+        n_cpus = None, kwargs_filter = {}, kwargs_velocity = {}, 
+        kwargs_velocity_graph = {}, kwargs_terminal_state = {}, 
+        kwargs_pseudotime = { 'save_diffmap': True }
+    ):
+        from exprmat.dynamics import run_velocity
+        run_velocity(
+            adata, neighbor_key = neighbor_key, neighbor_connectivity = neighbor_connectivity,
+            n_neighbors = n_neighbors, hvg = hvg, velocity_key = velocity_key,
+            n_cpus = n_cpus, kwargs_filter = kwargs_filter, 
+            kwargs_pseudotime = kwargs_pseudotime, kwargs_velocity = kwargs_velocity,
+            kwargs_velocity_graph = kwargs_velocity_graph, kwargs_terminal_state = kwargs_terminal_state,
+        )
     
 
     @staticmethod
@@ -1695,6 +1777,42 @@ class experiment:
     
 
     @staticmethod
+    def rna_plot_spliced_proportions(adata, sample_name, **kwargs):
+        from exprmat.plotting.velocity import proportions
+        return proportions(adata, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_velocity_streamline(
+        adata, sample_name, basis: str = 'umap',
+        vkey: str = "velocity",
+        neighbor_key: str = 'neighbors',
+        color = 'leiden', contour_plot = False, figsize = (5, 5), dpi = 100,
+        density: int = 2, **kwargs
+    ):
+        from exprmat.plotting.velocity import velocity_embedding_stream
+        return velocity_embedding_stream(
+            adata, basis = basis, vkey = vkey, neighbor_key = neighbor_key, 
+            color = color, contour_plot = contour_plot, figsize = figsize, dpi = dpi,
+            density = density, **kwargs
+        )
+    
+
+    @staticmethod
+    def rna_plot_velocity_gene(
+        adata, sample_name, basis = 'umap', gene = None, groupby = 'cell.type',
+        vkey = 'velocity', mode = "stochastic", neighbor_key = 'neighbors', 
+        highly_variable = 'vst.hvg', figsize = (14, 28), dpi = 100, **kwargs
+    ):
+        from exprmat.plotting.velocity import velocity
+        return velocity(
+            adata, basis = basis, vkey = vkey, neighbor_key = neighbor_key, 
+            gene = gene, groupby = groupby, mode = mode, highly_variable = highly_variable,
+            figsize = figsize, dpi = dpi, **kwargs
+        )
+
+
+    @staticmethod
     def adata_plot_sankey(adata, sample_name, obs1, obs2, exclude_values = ['na', 'nan'], **kwargs):
         from exprmat.plotting.sankey import sankey
         o1 = adata.obs[obs1].tolist()
@@ -1706,7 +1824,7 @@ class experiment:
 
         return sankey(adata.obs.loc[filters, obs1], adata.obs.loc[filters, obs2], **kwargs)
     
-
+    
     @staticmethod
     def rna_get_gsea(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
         
@@ -1844,6 +1962,12 @@ class experiment:
     def run_rna_umap(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, experiment.rna_umap, **kwargs)
 
+    def run_rna_mde(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, experiment.rna_mde, **kwargs)
+
+    def run_rna_mde_fit(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, experiment.rna_mde_fit, **kwargs)
+
 
     def run_rna_integrate(self, method = 'harmony', dest = 'harmony', **kwargs):
         
@@ -1919,8 +2043,14 @@ class experiment:
     def run_rna_opa(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_opa, **kwargs)
     
-    def run_rna_gsva(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, experiment.rna_gsva, **kwargs)
+    def run_rna_gsva(self, run_on_samples = False, key_added = 'gsva', **kwargs):
+        gsv = self.do_for_rna(run_on_samples, experiment.rna_gsva, **kwargs)
+        if not run_on_samples:
+            gsv.var['gset'] = gsv.var_names.tolist()
+            gsv.var_names = [key_added + ':' + str(i + 1) for i in range(gsv.n_vars)]
+            self.mudata.mod[key_added] = gsv
+        
+        return gsv
     
     def run_rna_remove_slots(self, run_on_samples = False, slot = 'obs', names = []):
         return self.do_for_rna(run_on_samples, experiment.remove_slot, slot = slot, names = names)
@@ -1931,8 +2061,16 @@ class experiment:
     def run_rna_score_genes(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_score_genes, **kwargs)
     
-    def run_rna_score_genes_gsva(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, experiment.rna_score_genes_gsva, **kwargs)
+    def run_rna_score_genes_gsva(self, run_on_samples = False, key_added = 'gsva.scores', **kwargs):
+        gsv = self.do_for_rna(run_on_samples, experiment.rna_score_genes_gsva, **kwargs)
+        if not run_on_samples:
+            gsv.var['gset'] = gsv.var_names.tolist()
+            gsv.var_names = [key_added + ':' + str(i + 1) for i in range(gsv.n_vars)]
+            self.mudata.mod[key_added] = gsv
+        return gsv
+    
+    def run_rna_velocity(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_velocity, **kwargs)
     
 
     # plotting wrappers
@@ -2046,6 +2184,15 @@ class experiment:
     def plot_rna_lr_circleplot(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_circleplot, **kwargs)
     
+    def plot_rna_spliced_proportions(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_spliced_proportions, **kwargs)
+    
+    def plot_rna_velocity_gene(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_velocity_gene, **kwargs)
+    
+    def plot_rna_velocity_streamline(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_velocity_streamline, **kwargs)
+    
     def plot_sankey(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.adata_plot_sankey, **kwargs)
     
@@ -2131,6 +2278,94 @@ class experiment:
                     self.modalities[key][sample].write_h5ad(
                         os.path.join(fdir, key, f'{sample}.h5ad')
                     )
+
+
+    def push(
+        self, 
+        columns: list[str] | None = None, 
+        mods: list[str] | None = None, 
+        common: bool | None = None, 
+        prefixed: bool | None = None, 
+        drop: bool = False, 
+        only_drop: bool = False
+    ):
+        self.mudata.push_obs(
+            columns = columns, mods = mods, common = common,
+            prefixed = prefixed, drop = drop, only_drop = only_drop
+        )
+
+    
+    def pull(
+        self,
+        columns: list[str] | None = None,
+        mods: list[str] | None = None, common: bool | None = None, 
+        join_common: bool | None = None, 
+        nonunique: bool | None = None, 
+        join_nonunique: bool | None = None, 
+        unique: bool | None = None, 
+        prefix_unique: bool | None = True, 
+        drop: bool = False, only_drop: bool = False
+    ):
+        self.mudata.pull_obs(
+            columns = columns, mods = mods, 
+            common = common, join_common = join_common,
+            nonunique = nonunique, join_nonunique = join_nonunique,
+            unique = unique, prefix_unique = prefix_unique,
+            drop = drop, only_drop = only_drop
+        )
+
+
+    def joint(
+        self, expm, name1 = 'self', name2 = 'addition',
+        keep_obs = ['sample', 'batch', 'modality', 'taxa', 'group', 'cell.type'],
+        keep_obsm = [],
+        keep_layers = ['counts'],
+        concat_label = 'origin',
+        concat_dump = 'joint'
+    ):
+        
+        concat_meta = metadata(
+            locations = None, modality = None, default_taxa = None, 
+            df = pd.concat(
+                (self.metadata.dataframe, expm.metadata.dataframe),
+                join = 'inner', ignore_index = True
+        ))
+
+        concat_dict = merge_dictionary(
+            self.modalities,
+            expm.modalities
+        )
+
+        self.pull(columns = keep_obs)
+        expm.pull(columns = keep_obs)
+        concat_mudata = mu.concat(
+            {name1: self.mudata, name2: expm.mudata},
+            join = 'outer', label = concat_label
+        )
+
+        merge = experiment(
+            meta = concat_meta,
+            mudata = concat_mudata,
+            modalities = concat_dict,
+            dump = concat_dump
+        )
+
+        if merge.mudata is not None:
+            for mod in merge.mudata.mod_names:
+                del merge.mudata[mod].obs
+
+                for obsm in list(merge.mudata[mod].obsm_keys()):
+                    if not obsm in keep_obsm:
+                        del merge.mudata[mod].obsm[obsm]
+
+                for layer in list(merge.mudata[mod].layers.keys()):
+                    if not layer in keep_layers:
+                        del merge.mudata[mod].layers[layer]
+                
+
+        merge.push(columns = keep_obs + ['origin'])
+        merge.mudata['rna'].var = experiment.search_genes(concat_mudata['rna'].var.index)
+        return merge
     
 
     def __repr__(self):
@@ -2247,6 +2482,18 @@ class experiment:
     pass
 
 
+def merge_dictionary(dict1, dict2):
+
+    for key in dict2.keys():
+        if key not in dict1.keys():
+            dict1[key] = dict2[key]
+        elif isinstance(dict2[key], dict) and isinstance(dict1[key], dict):
+            merge_dictionary(dict1[key], dict2[key])
+        else: error('conflicting keys.')
+    
+    return dict1
+
+
 def load_experiment(direc, load_samples = True, load_subset = None):
     
     import os
@@ -2286,14 +2533,3 @@ def load_experiment(direc, load_samples = True, load_subset = None):
 
     expr.build_variables()
     return expr
-
-
-class time_series_experiment(experiment):
-
-    def __init__(self, meta : metadata, time_series_key):
-        super().__init__(meta)
-        self.key_time_series = time_series_key
-        pass
-
-    pass
-

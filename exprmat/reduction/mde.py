@@ -53,3 +53,40 @@ def mde(
         emb = emb.cpu().numpy()
 
     return emb
+
+
+def mde_fit(
+    data, fit, fit_mask, device = None, **kwargs
+):
+    
+    try: import pymde
+    except: 
+        warning('mde embedding require installation of package `pymde`.')
+        return None
+    
+    fitting = fit[fit_mask, :]
+    device = 'cpu' if not torch.cuda.is_available() else 'cuda'
+
+    default_args = {
+        'embedding_dim': 2,
+        'constraint': pymde.Standardized(),
+        'repulsive_fraction': 0.7,
+        'verbose': False,
+        'device': device,
+        'n_neighbors': 15,
+    }
+
+    default_args.update(kwargs)
+    emb = pymde.preserve_neighbors(
+        torch.tensor(data, dtype = torch.float),
+        constraint = pymde.Anchored(
+            torch.nonzero(torch.tensor(fit_mask)).squeeze(), 
+            torch.tensor(fitting, dtype = torch.float)
+        ),
+        verbose = True
+    ).embed(verbose = True)
+
+    if isinstance(emb, torch.Tensor):
+        emb = emb.cpu().numpy()
+    
+    return emb

@@ -4,4 +4,4 @@ import anndata as ad
 
 mu.set_options(pull_on_update = False)
 
-def version(): return 'exprmat 0.1.14-1 [dev]'
+def version(): return 'exprmat 0.1.15-1 [dev]'

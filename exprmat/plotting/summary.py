@@ -23,7 +23,8 @@ def describe(
     continuous_plot = 'scatter',
     split_palette = 'Reds',
     paired = False,
-    ax = None, figsize = (5, 2), dpi = 100
+    ax = None, figsize = (5, 2), dpi = 100, 
+    legend = 'auto'
 ):
     
     longf = to_long_form(
@@ -56,19 +57,19 @@ def describe(
         if discrete_plot == 'box':
             boxplot(
                 longf, group_by, split_by, ax = ax, 
-                palette = split_palette, order = order
+                palette = split_palette, order = order, legend = legend
             )
         
         elif discrete_plot == 'bar':
             barplot(
                 longf, group_by, split_by, ax = ax, 
-                palette = split_palette, order = order
+                palette = split_palette, order = order, legend = legend
             )
         
         elif discrete_plot == 'violin':
             violinplot(
                 longf, group_by, split_by, ax = ax, 
-                palette = split_palette, order = order
+                palette = split_palette, order = order, legend = legend
             )
         
         if paired:
@@ -89,7 +90,7 @@ def describe(
     return fig
 
 
-def boxplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
+def boxplot(longf, x, split = None, ax = None, palette = 'Reds', order = None, legend = 'auto'):
     
     if ax is not None:
         sns.boxplot(
@@ -98,7 +99,7 @@ def boxplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', linecolor = '0', order = order, gap = 0.3,
             flierprops = dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
-            showfliers = True, width = 0.6
+            showfliers = True, width = 0.6, legend = legend
         )
 
         ax.spines[['right', 'top']].set_visible(False)
@@ -116,11 +117,11 @@ def boxplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', linecolor = '0', order = order, gap = 0.3,
             flierprops = dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
-            showfliers = True, width = 0.6
+            showfliers = True, width = 0.6, legend = legend
         )
 
 
-def barplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
+def barplot(longf, x, split = None, ax = None, palette = 'Reds', order = None, legend = 'auto'):
     
     if ax is not None:
         sns.barplot(
@@ -128,7 +129,7 @@ def barplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
             x = x, y = 'value', hue = split, ax = ax, fill = True,
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', order = order, gap = 0.3, width = 0.6,
-            err_kws = {'color': '0', 'linewidth': 0.6}, capsize = 0.2
+            err_kws = {'color': '0', 'linewidth': 0.6}, capsize = 0.2, legend = legend
         )
 
         ax.spines[['right', 'top']].set_visible(False)
@@ -145,11 +146,11 @@ def barplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
             x = x, y = 'value', hue = split, fill = True,
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', order = order, gap = 0.3, width = 0.6,
-            err_kws = {'color': '0', 'linewidth': 0.6}, capsize = 0.2
+            err_kws = {'color': '0', 'linewidth': 0.6}, capsize = 0.2, legend = legend
         )
 
 
-def violinplot(longf, x, split = None, ax = None, palette = 'Reds', order = None):
+def violinplot(longf, x, split = None, ax = None, palette = 'Reds', order = None, legend = 'auto'):
     
     if ax is not None:
         sns.violinplot(
@@ -157,7 +158,7 @@ def violinplot(longf, x, split = None, ax = None, palette = 'Reds', order = None
             x = x, y = 'value', hue = split, ax = ax, fill = True,
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', linecolor = '0', order = order, gap = 0.3,
-            inner = 'points', width = 0.6
+            inner = 'points', width = 0.6, legend = legend
         )
 
         ax.spines[['right', 'top']].set_visible(False)
@@ -174,5 +175,5 @@ def violinplot(longf, x, split = None, ax = None, palette = 'Reds', order = None
             x = x, y = 'value', hue = split, fill = True,
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', linecolor = '0', order = order, gap = 0.3,
-            inner = 'points', width = 0.6
+            inner = 'points', width = 0.6, legend = legend
         )

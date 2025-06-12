@@ -31,7 +31,7 @@ def get_genome(taxa):
     genome[taxa]['genes'] = pandas.read_table(
         os.path.join(basepath, f'{taxa}', 'genome.tsv.gz'),
         # set low memory to false to allow correct adjustment to mixed dtype.
-        index_col = '.ugene', dtype = {'.seqid': str}
+        index_col = '.ugene', dtype = {'.seqid': str}, low_memory = False
     )
 
     return genome[taxa]['genes']

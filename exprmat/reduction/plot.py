@@ -8,7 +8,7 @@ import matplotlib.text as mtext
 from matplotlib.colors import ListedColormap as listedcm
 
 from exprmat.ansi import warning, error
-from exprmat.utils import setup_styles, plotting_styles
+from exprmat.utils import setup_styles, plotting_styles, choose_layer
 
 
 class index_object:
@@ -289,6 +289,7 @@ def embedding_atlas(
 
 def embedding(
     adata, basis, color,
+    slot = 'X',
     
     # query plotting options
     ptsize = 8,
@@ -304,13 +305,14 @@ def embedding(
     annotate_style = 'index',
     annotate_foreground = 'black',
     annotate_stroke = 'white',
+    annotate_fontsize = 12,
     legend = True,
 
     # contour plotting option.
     contour_plot = True,
     contour_fill = False,
-    # contour_hue = None,
-    # contour_hue_order = None,
+    contour_mask = None,
+    contour_mask_values = [],
     contour_linewidth = 0.8,
     contour_default_color = 'black',
     # contour_palette = 'hls',
@@ -326,35 +328,44 @@ def embedding(
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
     cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
     hue_norm = None, 
-    legend_loc = 'right margin', frameon = 'small', fontsize = 9
+    legend_loc = 'right margin',
+    frameon = 'small',
+    xlabel = None, ylabel = None
 ):
+    
     setup_styles(**plotting_styles)
     import pandas as pd
     import seaborn as sb
     from scipy.sparse import issparse
     from exprmat.plotting import palettes
 
-    embedding = adata.obsm[basis]
+    if isinstance(basis, str):
+        embedding = adata.obsm[basis]
+    elif isinstance(basis, pd.DataFrame):
+        embedding = basis.data 
+    elif isinstance(basis, np.matrix) or isinstance(basis, np.ndarray):
+        embedding = basis
+
     df = pd.DataFrame(embedding, columns = ['x', 'y'])
 
     if color in adata.obs.columns:
         labels = adata.obs[color].tolist()
     elif color in adata.var_names:
-        X = adata[:, color].X
+        X = choose_layer(adata[:, color], layer = slot)
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)
     
     # try some conventions
     elif 'gene' in adata.var.keys() and color in adata.var['gene'].tolist():
         genes = adata.var['gene'].tolist()
-        X = adata.X[:, genes.index(color)]
+        X = choose_layer(adata[:, genes.index(color)], layer = slot)
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)
 
      # try some conventions
     elif 'ensembl' in adata.var.keys() and color in adata.var['ensembl'].tolist():
         genes = adata.var['ensembl'].tolist()
-        X = adata.X[:, genes.index(color)]
+        X = choose_layer(adata[:, genes.index(color)], layer = slot)
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)
     
@@ -417,8 +428,15 @@ def embedding(
         )
 
         if contour_plot:
+
+            cx = atlas_data['x']
+            cy = atlas_data['y']
+            if contour_mask is not None:
+                cx = [y for x, y in zip(adata.obs[contour_mask], cx) if x in contour_mask_values]
+                cy = [y for x, y in zip(adata.obs[contour_mask], cy) if x in contour_mask_values]
+
             sb.kdeplot(
-                x = atlas_data['x'], y = atlas_data['y'], warn_singular = False,
+                x = cx, y = cy, warn_singular = False,
                 linewidths = contour_linewidth, bw_adjust = contour_bw, bw_method = 'scott',
                 fill = contour_fill, ax = axes, 
                 palette = None, color = contour_default_color, alpha = contour_alpha,
@@ -458,7 +476,7 @@ def embedding(
                     x = center[0], y = center[1], # fontproperties = 'bold',
                     text = str(legend_id + 1) if annotate_style == 'index' else legend_t, 
                     color = annotate_foreground,
-                    ha = 'center', va = 'center', size = 12
+                    ha = 'center', va = 'center', size = annotate_fontsize
                 )
                 
                 text.set_path_effects([
@@ -558,6 +576,9 @@ def embedding(
             f'{basis}.2 ({sample_name})',loc = 'center'
         )
     
+    if xlabel is not None: axes.set_xlabel(xlabel)
+    if ylabel is not None: axes.set_ylabel(ylabel)
+
     line_width = 0.6
     axes.spines['left'].set_linewidth(line_width)
     axes.spines['bottom'].set_linewidth(line_width)
