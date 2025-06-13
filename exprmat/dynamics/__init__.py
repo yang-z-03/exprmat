@@ -48,4 +48,43 @@ def run_velocity(
     terminal_states(adata, vkey = velocity_key, neighbor_key = neighbor_key, **kwargs_terminal_state)
     velocity_pseudotime(adata, vkey = velocity_key, neighbor_key = neighbor_key, **kwargs_pseudotime)
     velocity_confidence(adata, vkey = velocity_key, neighbor_key = neighbor_key)
+
+
+def clean_velocity_results(adata, vkey = 'velocity'):
     
+    for x in list(adata.obs.keys()):
+        if x in [
+            'root.cells', 
+            'endpoints', 
+            'n.umi.spliced', 
+            'n.umi.unspliced', 
+            'velocity.pseudotime'
+        ]: del adata.obs[x]
+        elif x.startswith(f'{vkey}.'): del adata.obs[x]
+    
+    for x in list(adata.var.keys()):
+        if x.startswith(f'{vkey}.'): del adata.var[x]
+        elif x in ['gene.count.corr']: del adata.var[x]
+
+    for x in list(adata.layers.keys()):
+        if x in ['ms', 'mu', vkey, f'variance.{vkey}']: del adata.layers[x]
+        elif ('spliced.counts' in adata.layers.keys()) and x == 'spliced':
+            del adata.layers['spliced']
+            adata.layers['spliced'] = adata.layers['spliced.counts'].copy()
+            del adata.layers['spliced.counts']
+        elif ('unspliced.counts' in adata.layers.keys()) and x == 'unspliced':
+            del adata.layers['unspliced']
+            adata.layers['unspliced'] = adata.layers['unspliced.counts'].copy()
+            del adata.layers['unspliced.counts']
+    
+    for x in list(adata.obsm.keys()):
+        if x.startswith(f'{vkey}.'): del adata.obsm[x]
+        elif x.startswith('vdiff.'): del adata.obsm[x]
+        elif x == 'vdiff': del adata.obsm[x]
+
+    for x in list(adata.uns.keys()):
+        if x in [
+            f'{vkey}.graph',
+            f'{vkey}.graph.neg',
+            f'{vkey}.params'
+        ]: del adata.uns[x]

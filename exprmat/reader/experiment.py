@@ -158,33 +158,27 @@ class experiment:
             
             else: warning(f'sample {i_sample} have no supported modalities')
 
-        # construct variable name table: note that this variable table represent the
-        # all available set, and should be a superset of the merged table.
-        
-        self.build_variables()
-
         pass
 
 
-    def build_variables(self):
+    @property
+    def obs(self):
+        self.check_merged()
+        self.pull()
+        return self.mudata.obs
+    
 
-        self.variables = {}
+    @property
+    def var(self):
+        self.check_merged()
+        return self.mudata.var
+    
 
-        if len(self.modalities) == 0 and self.mudata is not None:
-            
-            if 'rna' in self.mudata.mod.keys():
-                self.variables['rna'] = self.mudata['rna'].var
-            
-            return
-
-        if 'rna' in self.modalities.keys():
-            genes = []
-            for sample in self.modalities['rna'].keys():
-                genes = set(list(genes) + self.modalities['rna'][sample].var_names.tolist())
-            self.variables['rna'] = experiment.search_genes(genes)
-        
-        pass
-
+    @property
+    def shape(self):
+        self.check_merged()
+        return (self.mudata.n_obs, self.mudata.n_vars)
+    
     
     @staticmethod
     def search_genes(genes):
@@ -501,6 +495,47 @@ class experiment:
         for mask in masks: final = final & mask
         subset = self.mudata[final, :].copy()
         info(f'selected {final.sum()} observations from {len(final)}.')
+
+        if not os.path.exists(os.path.join(self.directory, 'subsets')):
+            os.makedirs(os.path.join(self.directory, 'subsets'))
+        
+        subset.write_h5mu(os.path.join(self.directory, 'subsets', subset_name + '.h5mu'))
+
+
+    def build_subsample(
+        self, subset_name, slot = 'rna',
+        key = None, n = 3000
+    ):
+        self.check_merged(slot)
+        self.pull()
+        from exprmat.dynamics.utils import indices_to_bool
+
+        if key is None:
+            if n > self.mudata.n_obs:
+                n = self.mudata.n_obs
+                warning('subsample n > obs. returning all indices')
+            else: info(f'randomly selects {n} cells from {self.mudata.n_obs}.')
+            rind = np.random.choice(self.mudata.n_obs, size = n, replace = False)
+            mask = indices_to_bool(rind, self.mudata.n_obs)
+
+        elif isinstance(n, dict):
+            values = self.mudata.obs[f'{slot}:{key}'].unique().tolist()
+            rind = np.array([])
+            for val in values:
+                indices = np.argwhere(self.mudata.obs[f'{slot}:{key}'] == val).flatten()
+                if str(val) in n.keys(): _n = n[str(val)]
+                else: continue
+                if _n == '*': _n = len(indices)
+
+                if _n > len(indices):
+                    _n = len(indices)
+                    warning(f'subsample n > len({val}). returning all indices')
+                else: info(f'randomly selects {_n} cells from [{val}] ({len(indices)}).')
+                rind = np.append(rind, np.random.choice(indices, size = _n, replace = False))
+            mask = indices_to_bool(rind, self.mudata.n_obs)
+
+        subset = self.mudata[mask, :].copy()
+        info(f'selected {mask.sum()} observations from {len(mask)}.')
 
         if not os.path.exists(os.path.join(self.directory, 'subsets')):
             os.makedirs(os.path.join(self.directory, 'subsets'))
@@ -2531,5 +2566,4 @@ def load_experiment(direc, load_samples = True, load_subset = None):
         subset = subset
     )
 
-    expr.build_variables()
     return expr
