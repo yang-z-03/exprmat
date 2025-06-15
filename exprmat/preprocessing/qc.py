@@ -123,10 +123,14 @@ def rna_qc(
     adata.obs['pct.ribo'] = adata.obs['n.ribo'] / adata.obs['n.umi']
 
     # detect outliers
+    max_genes = None
     if outlier_mode == 'mads':
         umi_lower, umi_upper = mads(adata.obs['n.umi'].to_numpy(), nmads = outlier_n)
     elif outlier_mode == 'tukey':
         umi_lower, umi_upper = tukey(adata.obs['n.umi'].to_numpy(), n = outlier_n)
+    elif isinstance(outlier_mode, int):
+        umi_lower, umi_upper = 200, 100000
+        max_genes = outlier_mode
     else: umi_lower, umi_upper = 200, 100000
 
     f_obs = \
@@ -134,6 +138,8 @@ def rna_qc(
         (adata.obs['pct.mito'] < mt_percent) & \
         (adata.obs['n.umi'] >= umi_lower) & \
         (adata.obs['n.genes'] >= min_genes)
+    if max_genes is not None:
+        f_obs = f_obs & (adata.obs['n.genes'] <= max_genes)
     
     if ribo_percent is not None:
         f_obs = f_obs & (adata.obs['pct.ribo'] < ribo_percent)

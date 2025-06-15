@@ -504,6 +504,7 @@ class dotplot(object):
         y_order: Optional[List[str]] = None,
         thresh: float = 0.05,
         n_terms: int = 10,
+        terms = None,
         title: str = "",
         ax: Optional[plt.Axes] = None,
         figsize: Tuple[float, float] = (6, 5.5),
@@ -525,6 +526,7 @@ class dotplot(object):
         self.scale = dot_scale
         self.title = title
         self.n_terms = n_terms
+        self.terms = terms
         self.thresh = thresh
         self.data = self.process(df)
 
@@ -569,19 +571,26 @@ class dotplot(object):
             self.cbar_title = f'-log({self.colname})'
             self.colname = "p_inv"
 
+        if self.terms is not None:
+            if 'term' in df.columns:
+                df = df.loc[[x in self.terms for x in df['term']], :].copy()
+            elif 'name' in df.columns:
+                df = df.loc[[x in self.terms for x in df['name']], :].copy()
+            df = df.sort_values(by = self.colname)
+        
         # get top terms; sort ascending
-        if ((self.x is not None)
+        elif ((self.x is not None)
             and (self.x in df.columns)
             and (not all(df[self.x].map(self.isfloat)))
         ):
 
             df = ( # if x is numeric column, get top term of each group
                 df.groupby(self.x)
-                .apply(lambda _x: _x.sort_values(by=self.colname).tail(self.n_terms))
-                .reset_index(drop=True)
+                  .apply(lambda _x: _x.sort_values(by = self.colname).tail(self.n_terms))
+                  .reset_index(drop=True)
             )
 
-        else: df = df.sort_values(by=self.colname).tail(self.n_terms)  # acending
+        else: df = df.sort_values(by = self.colname).tail(self.n_terms)  # acending
         
         # get scatter area
         if df.columns.isin(["overlap", "tag"]).any():
@@ -794,6 +803,7 @@ def gsea_dotplot(
     title: str = "",
     cutoff: float = 0.05,
     top_term: int = 10,
+    terms = None,
     size: float = 5,
     ax: Optional[plt.Axes] = None,
     figsize: Tuple[float, float] = (4, 6),
@@ -816,6 +826,7 @@ def gsea_dotplot(
         title = title,
         thresh = cutoff,
         n_terms = int(top_term),
+        terms = terms,
         dot_scale = size,
         ax = ax,
         figsize = figsize,
@@ -848,6 +859,7 @@ def opa_dotplot(
     title: str = "",
     cutoff: float = 0.05,
     top_term: int = 10,
+    terms = None,
     size: float = 5,
     ax: Optional[plt.Axes] = None,
     figsize: Tuple[float, float] = (4, 6),
@@ -870,6 +882,7 @@ def opa_dotplot(
         title = title,
         thresh = cutoff,
         n_terms = int(top_term),
+        terms = terms,
         dot_scale = size,
         ax = ax,
         figsize = figsize,

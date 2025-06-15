@@ -1,5 +1,6 @@
 
 import numpy as np
+import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as mpe
 from matplotlib import cm
@@ -591,6 +592,7 @@ def embedding(
 
 def gene_gene(
     adata, gene_x, gene_y, color,
+    layer = 'X',
     
     # query plotting options
     ptsize = 8,
@@ -628,7 +630,7 @@ def gene_gene(
     legend_loc = 'right margin', frameon = 'small', fontsize = 9,
 
     remove_zero_expression = False,
-    scale = 'log', arcsinh_divider = None
+    scale = 'asis', arcsinh_divider = None
 ):
     setup_styles(**plotting_styles)
     import pandas as pd
@@ -640,37 +642,10 @@ def gene_gene(
     gy = None
     
     # assign gene X.
-
-    def find_var(gene_name):
-
-        if gene_name in adata.obs.columns:
-            vec = adata.obs[gene_name].tolist()
-
-        elif gene_name in adata.var_names:
-            X = adata[:, gene_name].X
-            if issparse(X): vec = X.toarray().reshape(-1)
-            else: vec = X.reshape(-1)
-
-        # try some conventions
-        elif 'gene' in adata.var.keys() and gene_name in adata.var['gene'].tolist():
-            genes = adata.var['gene'].tolist()
-            X = adata.X[:, genes.index(gene_name)]
-            if issparse(X): vec = X.toarray().reshape(-1)
-            else: vec = X.reshape(-1)
-
-         # try some conventions
-        elif 'ensembl' in adata.var.keys() and gene_name in adata.var['ensembl'].tolist():
-            genes = adata.var['ensembl'].tolist()
-            X = adata.X[:, genes.index(gene_name)]
-            if issparse(X): vec = X.toarray().reshape(-1)
-            else: vec = X.reshape(-1)
-
-        else: error(f'unable to find gene `{gene_name}` in metadata or variables.')
-        return vec
-    
-    gx = find_var(gene_x)
-    gy = find_var(gene_y)
-    labels = find_var(color)
+    from exprmat.utils import find_variable as find_var
+    gx = find_var(adata, gene_name = gene_x, layer = layer)
+    gy = find_var(adata, gene_name = gene_y, layer = layer)
+    labels = find_var(color) if color is not None else ['.'] * len(gx)
 
     df = pd.DataFrame({
         'x': gx,
@@ -681,16 +656,22 @@ def gene_gene(
     if remove_zero_expression:
         df = df.loc[(df['x'] > 0) & (df['y'] > 0), :].copy()
 
-    if scale == 'log':
-        pass
-    elif scale == 'linear':
+    if scale == 'asis': pass
+    elif scale == 'log':
+        df['x'] = np.log1p(df['x'])
+        df['y'] = np.log1p(df['y'])
+    elif scale == 'expm1':
         df['x'] = np.expm1(df['x'])
         df['y'] = np.expm1(df['y'])
     elif scale == 'arcsinh':
         lx = np.expm1(df['x']).loc[df['x'] > 0]
         ly = np.expm1(df['y']).loc[df['x'] > 0]
-        df['x'] = np.arcsinh(np.expm1(df['x']) / (arcsinh_divider if arcsinh_divider is not None else (np.median(lx) / 20)))
-        df['y'] = np.arcsinh(np.expm1(df['y']) / (arcsinh_divider if arcsinh_divider is not None else (np.median(ly) / 20)))
+        df['x'] = np.arcsinh(np.expm1(df['x']) / (
+            arcsinh_divider if arcsinh_divider is not None 
+            else (np.median(lx) / 20)))
+        df['y'] = np.arcsinh(np.expm1(df['y']) / (
+            arcsinh_divider if arcsinh_divider is not None 
+            else (np.median(ly) / 20)))
 
     gx = df['x'].tolist()
     gy = df['y'].tolist()
@@ -717,31 +698,35 @@ def gene_gene(
 
         df['label'] = df['label'].astype('category')
         hue = labels
-        original_cat = df['label'].value_counts().index.tolist()
-        original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
-        hue_order = original_cat if hue_order is None else hue_order
-        
-        default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+        hue_order = None
+        default_palette = None
 
-        if f'{color}.colors' not in adata.uns.keys():
-            adata.uns[f'{color}.colors'] = default_palette
-        elif len(adata.uns[f'{color}.colors']) != len(default_palette):
-            adata.uns[f'{color}.colors'] = default_palette
-        elif not isinstance(adata.uns[f'{color}.colors'], list):
-            adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
+        if color is not None:
+            original_cat = df['label'].value_counts().index.tolist()
+            original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
+            hue_order = original_cat if hue_order is None else hue_order
 
-        color_key = dict(zip(
-            hue_order,
-            adata.uns[f'{color}.colors']
-        ))
+            default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
+                list(palettes.all_palettes[cmap].keys())[-1]
+            ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+
+            if f'{color}.colors' not in adata.uns.keys():
+                adata.uns[f'{color}.colors'] = default_palette
+            elif len(adata.uns[f'{color}.colors']) != len(default_palette):
+                adata.uns[f'{color}.colors'] = default_palette
+            elif not isinstance(adata.uns[f'{color}.colors'], list):
+                adata.uns[f'{color}.colors'] = list(adata.uns[f'{color}.colors'])
+
+            color_key = dict(zip(
+                hue_order,
+                adata.uns[f'{color}.colors']
+            ))
         
         atlas_data['rasterized'] = rasterize
         sb.scatterplot(
             **atlas_data, s = ptsize,
             alpha = alpha, palette = default_palette, color = default_color,
-            hue = hue, hue_order = hue_order
+            hue = hue if color is not None else None, hue_order = hue_order
         )
 
         if contour_plot:
@@ -877,3 +862,70 @@ def gene_gene(
 
     if ax is None: return fig
     else: return ax
+
+
+def gene_gene_regress(
+    atlas, x, y, figsize = (3, 3), dpi = 100, 
+    title = None, regression_info = True, layer = 'X',
+    scale = 'asis'
+):
+    
+    fig, axis = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+
+    if isinstance(x, str):
+        xlab = f'Log expression {x}'; x = [x]
+    else: xlab = f'Log expression of signature \n{", ".join(x)}'
+
+    if isinstance(x, str):
+        ylab = f'Log expression {y}'; y = [y]
+    else: ylab = f'Log expression of signature \n{", ".join(y)}'
+    
+    from exprmat.utils import find_variable as find_var
+    
+    def get_gene_signature(atlas, genes, layer = 'X'):
+        x_genes = [find_var(atlas, x, layer) for x in genes]
+        x_genes = np.stack(x_genes, axis = 1)
+        x_genes = np.mean(x_genes, axis = 1)
+        return x_genes
+
+    x_genes = get_gene_signature(atlas, x, layer = layer)
+    y_genes = get_gene_signature(atlas, y, layer = layer)
+    
+    if scale == 'asis': pass
+    elif scale == 'log':
+        x_genes = np.log1p(x_genes)
+        y_genes = np.log1p(y_genes)
+
+    sns.regplot(
+        x = (x_genes), 
+        y = (y_genes), 
+        ax = axis,
+        scatter_kws = { 's': 4, 'color': 'black' },
+        line_kws = { 'linewidth': 1, 'color': 'red' }
+    )
+
+    axis.set_xlabel(xlab, loc = 'left', linespacing = 1.5)
+    axis.set_ylabel(ylab, loc = 'bottom', linespacing = 1.5)
+
+    for pos in ['right', 'top']:
+        axis.spines[pos].set_visible(False)
+
+    from scipy import stats
+    res = stats.linregress(x_genes, y_genes)
+    
+    r = (f"R: {res.rvalue:5.3f}")
+    p = (f"p: {res.pvalue:.2e}")
+    if title is not None: axis.set_title(title)
+
+    if regression_info:
+        x1, x2 = axis.get_xlim()
+        y1, y2 = axis.get_ylim()
+    
+        axis.text(
+            s = r + '\n' + p, va = 'bottom', ha = 'right', 
+            x = x1 + 0.95 * (x2 - x1), 
+            y = y1 + 0.05 * (y2 - y1),
+            linespacing = 1.5
+        )
+
+    return fig

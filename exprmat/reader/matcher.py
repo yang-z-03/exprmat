@@ -62,7 +62,7 @@ def refine_finder(features_fpath, taxa = 'mmu'):
         save_genome_changes(taxa)
 
 
-def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
+def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric = None):
     '''
     There are three main types of features table that may occur in the matrix data folder.
     
@@ -121,6 +121,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
             # and indices in multi-species joint analysis. if there is no such prefix detected
             # this means the gene comes from the default taxa.
             
+            if eccentric is not None: ens = eccentric(ens)
             if '_' in ens:
                 reference_name = ens.split('_')[0]
                 pure_ens = ens.replace(reference_name + '_', '')
@@ -164,7 +165,8 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
         query_ensembl = []
         n_not_found = 0
         for x in query_gname:
-
+            
+            if eccentric is not None: x = eccentric(x)
             if '_' in x:
                 
                 reference_name = x.split('_')[0]
@@ -219,10 +221,10 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu'):
     
 
 def read_mtx_rna(
-        src: str, prefix: str, 
-        metadata: metadata, sample: str, raw: bool = False,
-        default_taxa = 'mmu'
-    ):
+    src: str, prefix: str, 
+    metadata: metadata, sample: str, raw: bool = False,
+    default_taxa = 'mmu', eccentric = None
+):
     '''
     Formalize the three components in the matrix directory, and read the folder with gene
     expression data only.
@@ -251,7 +253,7 @@ def read_mtx_rna(
 
     # try:
     
-    adjust_features(src, refine_finder = True, default_taxa = default_taxa)
+    adjust_features(src, refine_finder = True, default_taxa = default_taxa, eccentric = eccentric)
 
     import warnings
     warnings.filterwarnings('ignore')
@@ -260,6 +262,9 @@ def read_mtx_rna(
         src, var_names = 'gene_ids', gex_only = True, make_unique = False,
         prefix = prefix
     )
+
+    if eccentric is not None:
+        adata.var_names = [eccentric(x) for x in adata.var_names]
 
     # except Exception as ex: 
     #     warning('error occurs when reading matrix files:')
@@ -278,10 +283,10 @@ def read_mtx_rna(
 
 
 def read_table_rna(
-        src: str, 
-        metadata: metadata, sample: str, raw: bool = False,
-        default_taxa = 'mmu'
-    ):
+    src: str, 
+    metadata: metadata, sample: str, raw: bool = False,
+    default_taxa = 'mmu', eccentric = None
+):
     '''
     Read from compressed or plain text tables.
 
@@ -310,6 +315,9 @@ def read_table_rna(
     adata = sc.read_text(
         src, delimiter = '\t', first_column_names = True, dtype = 'float32'
     ).T
+
+    if eccentric is not None:
+        adata.var_names = [eccentric(x) for x in adata.var_names]
 
     # except Exception as ex: 
     #     warning('error occurs when reading matrix files:')

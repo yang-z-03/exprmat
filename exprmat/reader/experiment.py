@@ -34,7 +34,12 @@ from exprmat.ansi import warning, info, error, red, green
 
 class experiment:
     
-    def __init__(self, meta : metadata, mudata = None, modalities = {}, dump = '.', subset = None):
+    def __init__(
+        self, meta : metadata, 
+        eccentric = None, 
+        mudata = None, modalities = {}, 
+        dump = '.', subset = None
+    ):
 
         # TODO: we support rna only at present.
         table = meta.dataframe.to_dict(orient = 'list')
@@ -81,7 +86,7 @@ class experiment:
 
                     self.modalities['rna'][i_sample] = read_table_rna(
                         src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
                     )
 
                 elif i_loc.endswith('.h5') or i_loc.endswith('.h5ad'):
@@ -94,7 +99,7 @@ class experiment:
                 else:
                     self.modalities['rna'][i_sample] = read_mtx_rna(
                         src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
                     )
                     
                 self.modalities['rna'][i_sample].var = \
@@ -708,7 +713,7 @@ class experiment:
         ls = self.mudata[slot].obs[annotation].tolist()
         mask = [x not in remove for x in ls]
         orig = self.mudata.n_obs
-        self.mudata = self.mudata[mask, :]
+        self.mudata = self.mudata[mask, :].copy()
         info(f'keep {self.mudata.n_obs} observations from {orig}.')
 
 
@@ -1361,6 +1366,11 @@ class experiment:
         from exprmat.reduction.plot import gene_gene
         return gene_gene(adata, sample_name = sample_name, **kwargs)
     
+    @staticmethod
+    def rna_plot_gene_gene_regress(adata, sample_name, **kwargs):
+        from exprmat.reduction.plot import gene_gene_regress
+        return gene_gene_regress(adata, sample_name = sample_name, **kwargs)
+    
 
     @staticmethod
     def rna_plot_markers(adata, sample_name, figsize, dpi, **kwargs):
@@ -1770,26 +1780,29 @@ class experiment:
     @staticmethod
     def rna_plot_gsea_dotplot(
         adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
-        colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
+        colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5,
+        terms = None
     ):
         from exprmat.plotting.gse import gsea_dotplot
         return gsea_dotplot(
             experiment.rna_get_gsea(adata, gsea_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'nes', y = 'name', title = gsea_key if title is None else title,
-            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
+            terms = terms
         )
     
 
     @staticmethod
     def rna_plot_opa_dotplot(
-        adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
+        adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05, top_term: int = 100, terms = None,
         colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
     ):
         from exprmat.plotting.gse import opa_dotplot
         return opa_dotplot(
             experiment.rna_get_opa(adata, opa_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'or', y = 'term', title = opa_key if title is None else title,
-            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term
+            cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
+            terms = terms
         )
     
 
@@ -1810,6 +1823,25 @@ class experiment:
         from exprmat.plotting.lr import heatmap
         return heatmap(adata = adata, uns_key = lr_key, **kwargs)
     
+
+    @staticmethod
+    def rna_plot_volcano(
+        adata, sample_name, de_slot = 'deg', label = [],
+        show_all = False, min_pct = 0, max_pct_reference = 1, 
+        min_lfc = -25, max_lfc = 25, remove_zero_pval = False,
+        highlight_min_logp = 5, highlight_min_lfc = 1.5,
+        xlim = 5, ylim = 100,
+        figsize = (3, 3), dpi = 100, **kwargs):
+        from exprmat.plotting.expression import volcano
+        return volcano(
+            adata = adata, de_slot = de_slot, label = label,
+            show_all = show_all, min_pct = min_pct, max_pct_reference = max_pct_reference, 
+            min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
+            highlight_min_logp = highlight_min_logp, highlight_min_lfc = highlight_min_lfc,
+            xlim = xlim, ylim = ylim,
+            figsize = figsize, dpi = dpi, **kwargs
+        )
+
 
     @staticmethod
     def rna_plot_spliced_proportions(adata, sample_name, **kwargs):
@@ -2142,6 +2174,9 @@ class experiment:
     
     def plot_rna_gene_gene(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_gene_gene, **kwargs)
+    
+    def plot_rna_gene_gene_regress(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_gene_gene_regress, **kwargs)
 
     def plot_rna_gene_gene_multiple(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_multiple_gene_gene, **kwargs)
@@ -2218,6 +2253,9 @@ class experiment:
     
     def plot_rna_lr_circleplot(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_lr_circleplot, **kwargs)
+    
+    def plot_rna_volcano(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_volcano, **kwargs)
     
     def plot_rna_spliced_proportions(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_spliced_proportions, **kwargs)

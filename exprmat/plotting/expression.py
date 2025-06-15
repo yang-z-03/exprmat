@@ -149,3 +149,72 @@ def matrix(
     ax.set_yticks(range(len(obs)), labels = obs)
 
     return fig
+
+
+def volcano(
+    adata, de_slot = 'deg', label = [],
+    show_all = False, min_pct = 0, max_pct_reference = 1, 
+    min_lfc = -25, max_lfc = 25, remove_zero_pval = False,
+    highlight_min_logp = 5, highlight_min_lfc = 1.5,
+    xlim = 5, ylim = 100,
+    figsize = (3, 3), dpi = 100
+):
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from adjustText import adjust_text
+    from exprmat.reader.experiment import experiment
+
+    pvals = []
+    fc = []
+    names = []
+
+    plots = experiment.rna_get_markers(
+        adata, de_slot = de_slot,
+        min_pct = min_pct, max_pct_reference = max_pct_reference, 
+        min_lfc = min_lfc, max_lfc = max_lfc, 
+        remove_zero_pval = remove_zero_pval
+    )
+    
+    pvals = plots['log10.q'].tolist()
+    fc = plots['lfc'].tolist()
+    names = plots['gene'].tolist()
+
+    fig, axes = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+    axes.scatter(fc, pvals, c = 'k', s = 4)
+
+    sig_pvals = []
+    sig_fc = []
+    sig_names = []
+
+    for p, f, nm in zip(pvals, fc, names):
+        if nm in label:
+            sig_pvals += [p]
+            sig_fc += [f]
+            sig_names += [nm]
+
+        if (p > highlight_min_logp and abs(f) >= highlight_min_lfc) and show_all:
+            sig_pvals += [p]
+            sig_fc += [f]
+            sig_names += [nm]
+
+    texts = []
+    for p, f, nm in zip(sig_pvals, sig_fc, sig_names):
+        texts += [axes.text(f, p, nm, va = 'top', ha = 'center')]
+
+    adjust_text(texts)
+    axes.scatter(sig_fc, sig_pvals, c = 'r', s = 10)
+    axes.grid(False)
+
+    xlim = min(np.abs(np.array(fc)).max(), xlim)
+    ylim = min(ylim, np.max(np.array(pvals)))
+    axes.set_xlim([-xlim, xlim])
+    axes.set_ylim([-ylim / 20, ylim])
+
+    axes.vlines(x = [0], ymin = [0], ymax = [ylim], linestyles = 'dashed', color = 'gray', linewidth = 0.6)
+    axes.set_yticks([])
+    axes.set_xlabel('Log-2 fold changes')
+    for pos in ['right', 'top', 'left']:
+        axes.spines[pos].set_visible(False)
+        
+    return fig
