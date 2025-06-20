@@ -510,6 +510,7 @@ class dotplot(object):
         figsize: Tuple[float, float] = (6, 5.5),
         cmap: str = 'turbo',
         marker: str = "o",
+        formatter = None,
         ** kwargs,
     ):
         
@@ -528,6 +529,7 @@ class dotplot(object):
         self.n_terms = n_terms
         self.terms = terms
         self.thresh = thresh
+        self.formatter = formatter
         self.data = self.process(df)
 
 
@@ -641,7 +643,8 @@ class dotplot(object):
             values = self.colname,
         ).fillna(0)
         idx = self.hierarchical_clust(mat, method, metric)
-        return list(mat.index[idx])
+        ys = list(mat.index[idx])
+        return ys
 
 
     def get_ax(self):
@@ -734,8 +737,13 @@ class dotplot(object):
             )
             
         # inner circle
+
+        df2 = df.copy()
+        if self.formatter is not None:
+            df2[y] = [self.formatter(z) for z in df2[y]]
+        
         sc = ax.scatter(
-            x = x, y = y, data = df,
+            x = x, y = y, data = df2,
             s = "area", edgecolors = "none",
             c = self.colname, cmap = self.cmap,
             vmin = vmin,
@@ -813,6 +821,7 @@ def gsea_dotplot(
     yticklabels_rot: Optional[float] = None,
     marker: str = "o",
     show_ring: bool = False,
+    formatter = None,
     **kwargs,
 ):
     
@@ -832,6 +841,7 @@ def gsea_dotplot(
         figsize = figsize,
         cmap = cmap,
         marker = marker,
+        formatter = formatter
     )
 
     ax = dot.scatter(outer_ring = show_ring)
@@ -869,6 +879,7 @@ def opa_dotplot(
     yticklabels_rot: Optional[float] = None,
     marker: str = "o",
     show_ring: bool = False,
+    formatter = None,
     **kwargs,
 ):
     
@@ -888,6 +899,7 @@ def opa_dotplot(
         figsize = figsize,
         cmap = cmap,
         marker = marker,
+        formatter = formatter
     )
 
     ax = dot.scatter(outer_ring = show_ring)

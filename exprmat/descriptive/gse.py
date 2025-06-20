@@ -107,10 +107,11 @@ def opa(
     de_slot, group_name = None, translate_de_slot = None,
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
+    use_abs_lfc = False, min_abs_lfc = 1.0, max_abs_lfc = 25.0,
 
     key_added = 'opa',
     gene_sets = 'kegg',
-    identifier = 'uppercase',
+    identifier = 'entrez',
     opa_cutoff = 0.05,
 ):
     
@@ -133,10 +134,16 @@ def opa(
             tab = tab[tab['pct'] >= min_pct]
         if max_pct_reference is not None and 'pct.reference' in tab.columns:
             tab = tab[tab['pct.reference'] <= max_pct_reference]
-        if min_lfc is not None and 'lfc' in tab.columns:
-            tab = tab[tab['lfc'] >= min_lfc]
-        if max_lfc is not None and 'lfc' in tab.columns:
-            tab = tab[tab['lfc'] <= max_lfc]
+        
+        if not use_abs_lfc:
+            if min_lfc is not None and 'lfc' in tab.columns:
+                tab = tab[tab['lfc'] >= min_lfc]
+            if max_lfc is not None and 'lfc' in tab.columns:
+                tab = tab[tab['lfc'] <= max_lfc]
+        else:
+            tab = tab[np.abs(tab['lfc'].to_numpy()) >= min_abs_lfc]
+            tab = tab[np.abs(tab['lfc'].to_numpy()) <= max_abs_lfc]
+
         if remove_zero_pval:
             tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
         
@@ -147,9 +154,9 @@ def opa(
         names = [x.replace('rna:', '') for x in names]
         genes = translate_id(taxa, names, 'ugene', identifier, keep_nones = False)
 
-    background = adata.var_names.tolist()
-    background = [x.replace('rna:', '') for x in background]
-    background = translate_id(taxa, background, 'ugene', identifier, keep_nones = False)
+    geneset = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier)
+    background = []
+    for k in geneset.keys(): background += geneset[k]
 
     import gseapy as gp
     import pandas as pd
@@ -162,7 +169,7 @@ def opa(
 
     op = gp.enrich(
         gene_list = genes,
-        gene_sets = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier),
+        gene_sets = geneset,
         background = background,
         cutoff = opa_cutoff
     )

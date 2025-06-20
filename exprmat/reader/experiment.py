@@ -1157,6 +1157,7 @@ class experiment:
         de_slot, group_name = None,
         min_pct = 0.0, max_pct_reference = 1, 
         min_lfc = None, max_lfc = None, remove_zero_pval = False,
+        use_abs_lfc = False, min_abs_lfc = 1.0, max_abs_lfc = 25.0,
 
         key_added = 'gsea',
         gene_sets = 'all',
@@ -1169,6 +1170,7 @@ class experiment:
             adata, taxa = taxa, de_slot = de_slot, group_name = None,
             min_pct = min_pct, max_pct_reference = max_pct_reference,
             min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
+            use_abs_lfc = use_abs_lfc, min_abs_lfc = min_abs_lfc, max_abs_lfc = max_abs_lfc,
             key_added = key_added, gene_sets = gene_sets, identifier = identifier,
             opa_cutoff = opa_cutoff, **kwargs
         )
@@ -1781,28 +1783,29 @@ class experiment:
     def rna_plot_gsea_dotplot(
         adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
         colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5,
-        terms = None
+        terms = None, formatter = None
     ):
         from exprmat.plotting.gse import gsea_dotplot
         return gsea_dotplot(
             experiment.rna_get_gsea(adata, gsea_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'nes', y = 'name', title = gsea_key if title is None else title,
             cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
-            terms = terms
+            terms = terms, formatter = formatter
         )
     
 
     @staticmethod
     def rna_plot_opa_dotplot(
         adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05, top_term: int = 100, terms = None,
-        colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5
+        colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5,
+        formatter = None
     ):
         from exprmat.plotting.gse import opa_dotplot
         return opa_dotplot(
             experiment.rna_get_opa(adata, opa_key, max_fdr = max_fdr, max_p = max_p),
             column = colour, x = 'or', y = 'term', title = opa_key if title is None else title,
             cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
-            terms = terms
+            terms = terms, formatter = formatter
         )
     
 
