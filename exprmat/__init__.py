@@ -1,9 +1,20 @@
 
+import os
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['GOTO_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+
 import mudata as mu
 import anndata as ad
+import scanpy as sc
 
-from exprmat.ansi import info, error, format_file_size
+# core method exports
+from exprmat.utils import setup_styles, plotting_styles
+from exprmat.reader.experiment import experiment, load_experiment
+from exprmat.reader.metadata import metadata, load_metadata
+
 mu.set_options(pull_on_update = False)
+setup_styles(**plotting_styles)
 
 
 MAJOR = 0
@@ -16,6 +27,7 @@ def version():
     import os
     import sys
     import platform
+    from exprmat.ansi import info, error, format_file_size
     info(f'exprmat {MAJOR}.{MINOR}.{REVISION} (patch {PATCH})')
     info(f'os: {os.name} ({sys.platform})  platform version: {platform.release()}')
     info(f'current working directory: {os.getcwd()}')
@@ -25,9 +37,27 @@ def version():
 
 def memory():
     import psutil
+    from exprmat.ansi import info, error, format_file_size
     meminfo = psutil.Process().memory_info()
     resident = meminfo.rss
     virtual = meminfo.vms
     info(f'resident memory: {format_file_size(resident)}')
     info(f'virtual memory: {format_file_size(virtual)}')
 
+
+setwd = os.chdir
+getwd = os.getcwd
+
+
+__all__ = [
+    'setup_styles',
+    'plotting_styles',
+    'experiment',
+    'metadata',
+    'load_experiment',
+    'load_metadata',
+    'version',
+    'memory',
+    'setwd',
+    'getwd'
+]

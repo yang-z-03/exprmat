@@ -25,6 +25,11 @@ def setup_styles(font_name = 'Helvetica Neue LT Std', backend = 'TkAgg'):
     plt.rcParams["ytick.labelright"] = False
     plt.rcParams["ytick.labelleft"] = True
 
+    # export text as fonts, not as paths.
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rcParams['ps.fonttype'] = 42
+
+    # do not show too much precision
     np.set_printoptions(precision = 3, floatmode = 'fixed', suppress = True)
     pass
 
@@ -228,3 +233,56 @@ def handle_modality(mdata, mod, use_raw, layer, transform, verbose):
         md.X = transform(md.X)
     
     return md
+
+
+def counts_to_10x(fpath, outdir, sep = '\t', comment = '#'):
+    
+    import pandas as pd
+    countdf = pd.read_table(fpath, sep = sep, comment = comment, index_col = 0)
+    genes = countdf.index.tolist()
+    cells = countdf.columns.tolist()
+
+    cells = pd.DataFrame(cells)
+    genes = pd.DataFrame({
+        'id': genes,
+        'name': genes,
+        'tag': ['Gene Expression'] * len(genes)
+    })
+    
+    from scipy.sparse import csr_matrix
+    from scipy.io import mmwrite
+    import os
+
+    mat = csr_matrix(countdf)
+    info(f'count matrix of size {mat.shape} written.')
+    mmwrite(os.path.join(outdir, 'matrix.mtx'), mat)
+    genes.to_csv(os.path.join(outdir, 'features.tsv'), sep = '\t', header = False, index = False)
+    cells.to_csv(os.path.join(outdir, 'barcodes.tsv'), sep = '\t', header = False, index = False)
+
+
+'''
+# r conversion from seurat to a three-row features table
+seurat_to_10x <- function(srat, outdir) {
+    
+    features <- data.frame(
+        ensembl = rownames(srat),
+        gene = rownames(srat),
+        tag = "Gene Expression"
+    )
+
+    write(
+        x = colnames(srat),
+        file = paste(outdir, 'barcodes.tsv', sep = '/')
+    )
+    
+    write.table(
+        x = features,
+        file = paste(outdir, 'features.tsv', sep = '/'),
+        sep = "\t", quote = FALSE, col.names = FALSE, row.names = FALSE
+    )
+
+    require(Matrix)
+    sparse <- Matrix(srat @ assays $ RNA @ counts, sparse = T)
+    writeMM(sparse, file = paste(outdir, 'matrix.mtx', sep = '/'))
+}
+'''

@@ -144,14 +144,37 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
         for taxa in mentioned_taxa:
             save_genome_changes(taxa)
 
-    if n_columns == 3: return
+    if n_columns == 3: 
+
+        fpath = os.path.join(path, 'genes.tsv')
+        if os.path.exists(fpath):
+            os.rename(os.path.join(path, 'genes.tsv'), os.path.join(path, 'features.tsv'))
+        
+        fpath = os.path.join(path, 'features.tsv')
+        if os.path.exists(fpath):
+            from sh import gzip
+            gzip(fpath)
+
+        fpath = os.path.join(path, 'barcodes.tsv')
+        if os.path.exists(fpath):
+            from sh import gzip
+            gzip(fpath)
+
+        fpath = os.path.join(path, 'matrix.mtx')
+        if os.path.exists(fpath):
+            from sh import gzip
+            gzip(fpath)
+
+        return
+    
+
     if n_columns == 2:
 
         info(f'path [{path}] contains legacy gene table.')
         construct = pd.DataFrame({
             'v0': table[0].tolist(),
             'v1': table[1].tolist(),
-            'v2': ['Gene Expression'] * len(query_gname)
+            'v2': ['Gene Expression'] * len(table[1].tolist())
         })
 
     if n_columns == 1:
@@ -173,7 +196,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
                 pure_nm = x.replace(reference_name + '_', '')
                 
                 if not reference_name in cfg['taxa.reference'].keys():
-                    warning(f'gene {ens} seems to have a reference prefix, but not registered to taxa.')
+                    warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
                     query_ensembl += [x]
                     n_not_found += 1
                     continue
@@ -217,6 +240,10 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
         from sh import gzip
         gzip(fpath)
     
+    fpath = os.path.join(path, 'genes.tsv')
+    if os.path.exists(fpath):
+        os.rename(fpath, os.path.join(path, 'genes.tsv.backup'))
+
     return
     
 
@@ -1013,14 +1040,19 @@ def attach_splice_reads_loom(adata, loom_file, default_taxa, sample):
     # by now the variable names are identical, while the obs names should match
     # those in the obs['barcode']
 
+    # remove 10x lane no.
+    adata.obs['barcode.pure'] = [
+        x[:-2] if x[-2] == '-' else x for x in adata.obs['barcode'].tolist()
+    ]
+
     adata = adata[
-        [x in final.obs_names for x in adata.obs['barcode'].tolist()],
+        [x in final.obs_names for x in adata.obs['barcode.pure'].tolist()],
         [x in final.var_names for x in adata.var_names.tolist()]
     ].copy()
 
-    final = final[adata.obs['barcode'], adata.var_names].copy()
+    final = final[adata.obs['barcode.pure'], adata.var_names].copy()
     adata.layers['spliced'] = final.layers['spliced']
     adata.layers['unspliced'] = final.layers['unspliced']
     adata.layers['ambiguous'] = final.layers['ambiguous']
-
+    del adata.obs['barcode.pure']
     return adata

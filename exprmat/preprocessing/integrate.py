@@ -130,6 +130,18 @@ def bbknn(  # noqa: PLR0913
     )
 
 
+def moe_correct_ridge(orig, cos, corr, R, W, K, phi_rk, phi_moe, lamb):
+    corr = orig.copy()
+    for i in range(K):
+        phi_rk = np.multiply(phi_moe, R[i,:])
+        x = np.dot(phi_rk, phi_moe.T) + lamb
+        W = np.dot(np.dot(np.linalg.inv(x), phi_rk), orig.T)
+        W[0,:] = 0 # do not remove the intercept
+        corr -= np.dot(W.T, phi_rk)
+    cos = corr / np.linalg.norm(corr, ord=2, axis=0)
+    return cos, corr, W, phi_rk
+
+
 def harmony(
     adata: ad.AnnData,
     key: str,
@@ -208,6 +220,16 @@ def harmony(
     default_params.update(kwargs)
     harmony_out = harmonypy.run_harmony(X, adata.obs, key, **default_params)
     adata.obsm[adjusted_basis] = harmony_out.Z_corr.T
+    _, x_corr, _, _ = moe_correct_ridge(
+        X.T, None, None, 
+        harmony_out.R, None, 
+        harmony_out.K, None, 
+        harmony_out.Phi_moe, harmony_out.lamb
+    )
+    
+    x_corr = np.array(x_corr.T)
+    x_corr[x_corr < 0] = 0
+    adata.layers[adjusted_basis] = x_corr
     return adata
 
 

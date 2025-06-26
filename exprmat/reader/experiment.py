@@ -1343,6 +1343,85 @@ class experiment:
             kwargs_pseudotime = kwargs_pseudotime, kwargs_velocity = kwargs_velocity,
             kwargs_velocity_graph = kwargs_velocity_graph, kwargs_terminal_state = kwargs_terminal_state,
         )
+
+    
+    @staticmethod
+    def rna_consensus_nmf(
+        adata, sample_name, 
+        ks,
+        counts: str = 'counts', tpm: str = 'norm', 
+        hvg: str = 'vst.hvg', 
+        min_counts: int = 3, 
+        alpha_usage: float = 0, alpha_spectra: float = 0, 
+        init: str = 'random', 
+        max_nmf_iter: int = 1000, n_permutation: int = 100, 
+        seed: int = 42, beta_loss: str = 'frobenius', 
+        density_threshold: float = 0.5,
+        local_neighborhood_size: float = 0.3,
+        refit: bool = True,
+        normalize_tpm_spectra: bool = False,
+        key_added = 'cnmf',
+        ncpus = 1
+    ):
+        from exprmat.clustering.cnmf import cnmf
+        from exprmat.preprocessing import normalize
+
+        if not tpm in adata.layers.keys():
+            normalize(adata, counts = counts, dest = tpm, method = 'total')
+
+        kwargs = {
+            'counts': counts, 'tpm': tpm, 'hvg': hvg,
+            'min_counts': min_counts,
+            'alpha_usage': alpha_usage, 'alpha_spectra': alpha_spectra,
+            'init': init,
+            'max_nmf_iter': max_nmf_iter, 'n_iter': n_permutation,
+            'seed': seed, 'beta_loss': beta_loss,
+            'ncpus': ncpus, 'density_threshold': density_threshold,
+            'local_neighborhood_size': local_neighborhood_size,
+            'refit': refit, 'normalize_tpm_spectra': normalize_tpm_spectra,
+            'ks': ks
+        }
+
+        comb, stats = cnmf(
+            adata, comb = None,
+            return_k = None, # for the first round, return statistics
+            **kwargs
+        )
+
+        stats = pd.DataFrame(stats, index = ['ncomps', 'threshold', 'silhoutte', 'error']).T
+        adata.uns[key_added] = comb
+        adata.uns[f'{key_added}.stats'] = stats
+        adata.uns[f'{key_added}.args'] = kwargs
+
+    
+    @staticmethod
+    def rna_consensus_nmf_extract_k(
+        adata, sample_name, k, nmf_slot = 'nmf', 
+        usage_added = 'nmf.{k}', 
+        spectra_added = 'nmf.{k}',
+        coef_added = 'nmf.coef.{k}',
+        spectra_cluster_dist_added = 'nmf.dist.{k}',
+        density_added = 'nmf.density.{k}'
+    ):
+        from exprmat.clustering.cnmf import cnmf
+        from exprmat.preprocessing import normalize
+
+        kwargs = adata.uns[f'{nmf_slot}.args']
+        comb = adata.uns[nmf_slot]
+
+        _, res = cnmf(
+            adata, comb = comb,
+            return_k = k, # extract specific k
+            **kwargs
+        )
+
+        local_density, dist, _, rf_usages, spectra_tpm, usage_coef, _ = res
+        adata.obsm[usage_added.format(k)] = rf_usages
+        adata.varm[spectra_added.format(k)] = spectra_tpm.T
+        adata.varm[coef_added.format(k)] = usage_coef.T
+        adata.uns[spectra_cluster_dist_added.format(k)] = dist
+        adata.uns[density_added.format(k)] = local_density
+        return
     
 
     @staticmethod
@@ -1512,7 +1591,8 @@ class experiment:
     @staticmethod
     def rna_plot_kde(
         adata, sample_name, basis, kde, grouping_key, 
-        figsize, dpi, groups = None, ncols = 1, **kwargs
+        figsize, dpi, groups = None, ncols = 1, background = 'leiden',
+        annotate = True, annotate_fontsize = 9, **kwargs
     ):
         from exprmat.reduction.plot import embedding
         import matplotlib.pyplot as plt
@@ -1529,21 +1609,53 @@ class experiment:
         
         for feat_id in range(len(groups)):
             try:
+                subset = adata[adata.obs[grouping_key] == groups[feat_id],:]
+                ann = subset.obs[background].value_counts().index.tolist()
+
                 if len(axes.shape) == 2:
+
+                    # we need to plot a whole map as the background,
+                    # for the subset maybe extremely biased and uncomparable.
                     embedding(
-                        adata[adata.obs[grouping_key] == groups[feat_id],:], 
+                        adata, basis, color = background,
+                        default_color = '#eeeeee', ptsize = 8,
+                        annotate = annotate, annotate_style = 'text',
+                        legend = False, contour_plot = False,
+                        annotate_fontsize = annotate_fontsize,
+                        annotate_only = ann,
+                        cmap = None, add_outline = True, outline_color = '#777777',
+                        ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
+                        sample_name = sample_name, title = groups[feat_id]
+                    )
+                
+                    embedding(
+                        subset, 
                         basis, color = kde,
                         ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
                         sample_name = sample_name, title = groups[feat_id], **kwargs
                     )
 
                 elif len(axes.shape) == 1:
+
                     embedding(
-                        adata[adata.obs[grouping_key] == groups[feat_id],:], 
+                        adata, basis, color = background,
+                        default_color = '#eeeeee', ptsize = 8,
+                        annotate = annotate, annotate_style = 'text',
+                        legend = False, contour_plot = False,
+                        annotate_fontsize = annotate_fontsize,
+                        annotate_only = ann,
+                        cmap = None, add_outline = True, outline_color = '#777777',
+                        ax = axes[feat_id], dpi = dpi,
+                        sample_name = sample_name, title = groups[feat_id]
+                    )
+
+                    embedding(
+                        subset, 
                         basis, color = kde,
                         ax = axes[feat_id], dpi = dpi,
                         sample_name = sample_name, title = groups[feat_id], **kwargs
                     )
+                    
             except: pass
         
         fig.set_figwidth(figsize[0])
@@ -2141,6 +2253,12 @@ class experiment:
     
     def run_rna_velocity(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, experiment.rna_velocity, **kwargs)
+    
+    def run_rna_consensus_nmf(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_consensus_nmf, **kwargs)
+    
+    def run_rna_consensus_nmf_extract_k(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, experiment.rna_consensus_nmf_extract_k, **kwargs)
     
 
     # plotting wrappers

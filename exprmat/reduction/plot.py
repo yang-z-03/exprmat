@@ -307,6 +307,7 @@ def embedding(
     annotate_foreground = 'black',
     annotate_stroke = 'white',
     annotate_fontsize = 12,
+    annotate_only = None,
     legend = True,
 
     # contour plotting option.
@@ -393,7 +394,10 @@ def embedding(
 
     if type(labels[0]) is str:
 
-        df['label'] = df['label'].astype('category')
+        # eliminate nan's in the labels for categories
+        df['label'] = df['label'].fillna('n/a').astype('str').astype('category')
+        labels = df['label'].tolist()
+
         hue = labels
         original_cat = df['label'].value_counts().index.tolist()
         original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
@@ -466,8 +470,14 @@ def embedding(
         if annotate:
 
             for legend_t, legend_c, legend_id in zip(
-                hue_order, adata.uns[f'{color}.colors'], range(len(hue_order))
+                hue_order, 
+                adata.uns[f'{color}.colors'] if cmap is not None else ['black'] * len(hue_order), 
+                range(len(hue_order))
             ):
+                if annotate_only is not None:
+                    if legend_t not in annotate_only:
+                        continue
+                    
                 # calculate gravity for legend_t class.
                 selection = [x == legend_t for x in hue]
                 xs = np.array(atlas_data['x'])[selection]
