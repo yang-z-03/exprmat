@@ -3,7 +3,7 @@ name: Build Multiplatform Wheels
 on: [push, pull_request]
 
 jobs:
-  build_wheels:
+  build-wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -14,7 +14,6 @@ jobs:
     env:
       CIBW_BEFORE_BUILD_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
       CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
-      CIBW_SKIP: "pp* *-win32"
     
     steps:
       - uses: actions/checkout@v4
@@ -30,3 +29,26 @@ jobs:
         with:
           name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
+
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/exprmat
+    permissions:
+      id-token: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./wheels
+          merge-multiple: true
+
+      - name: Check downloaded artifact files
+        run: ls -alR ./wheels
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./wheels
