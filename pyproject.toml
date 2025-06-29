@@ -12,7 +12,7 @@ exclude = ["exprmat/data/**/*"]
 [project]
 name = "exprmat"
 description = "exprmat: Routines for expression matrices"
-readme = "readme"
+readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
 version = "0.1.22"
