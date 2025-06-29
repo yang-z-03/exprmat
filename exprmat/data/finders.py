@@ -4,7 +4,7 @@ import pandas
 from exprmat.ansi import warning, info
 from exprmat.configuration import default as cfg
 
-basepath = os.path.dirname(__file__)
+basepath = cfg['data']
 genome = {}
 
 def refresh_genome():

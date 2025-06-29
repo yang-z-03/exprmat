@@ -15,6 +15,7 @@ class Configuration:
         self.config['plotting.font.b'] = None
         self.config['plotting.font.i'] = None
         self.config['plotting.font.bi'] = None
+        self.config['data'] = os.path.join(os.path.dirname(__file__), 'data')
 
         # target taxa
 
