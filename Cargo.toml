@@ -1,5 +1,5 @@
 [workspace]
-members = ["snapatac2-core", "snapatac2-python"]
+members = ["snapatac2-core", "snapatac2"]
 resolver = "2"
 
 [workspace.dependencies]

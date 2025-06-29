@@ -78,7 +78,7 @@ class region_index:
         
         else: return region_index(
             region_or_gene_ids = region_ids,
-            regions_or_genes_type=region_type.REGIONS)
+            regions_or_genes_type = region_type.REGIONS)
 
 
     @staticmethod
@@ -137,7 +137,7 @@ class region_index:
 
         self.ids = tuple(self.ids_dict)
         self.ids_set = set(self.ids_dict)
-        self.type = regions_or_genes_type
+        self.type = region_type(regions_or_genes_type)
 
 
     def __eq__(self, other: object) -> bool:
@@ -243,7 +243,7 @@ class cistrome_index:
 
         self.ids = tuple(self.ids_dict)
         self.ids_set = set(self.ids_dict)
-        self.type = motifs_or_tracks_type
+        self.type = cistrome_type(motifs_or_tracks_type)
 
 
     def __eq__(self, other: object):
@@ -474,7 +474,7 @@ class cistarget_db:
                 columns = (
                     found_regions.sort().ids
                     if sort else found_regions.ids
-                ) + (self.all_motif_or_track_ids.type,),
+                ) + (self.all_motif_or_track_ids.type.value,),
                 memory_map = False,
                 use_threads = True,
             )
@@ -513,7 +513,7 @@ class cistarget_db:
                 self.df_cached = pa_table.select((
                         self.region_or_gene_ids_loaded.sort().ids
                         if sort else self.region_or_gene_ids_loaded.ids
-                    ) + (self.all_motif_or_track_ids.type,)
+                    ) + (self.all_motif_or_track_ids.type.value,)
                 )
 
 

@@ -4,6 +4,7 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['GOTO_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 
+import importlib.metadata
 import mudata as mu
 import anndata as ad
 import scanpy as sc
@@ -17,22 +18,19 @@ mu.set_options(pull_on_update = False)
 setup_styles(**plotting_styles)
 
 
-MAJOR = 0
-MINOR = 1
-REVISION = 19
-PATCH = 1
-
-
 def version(): 
     import os
     import sys
     import platform
     from exprmat.ansi import info, error, format_file_size
-    info(f'exprmat {MAJOR}.{MINOR}.{REVISION} (patch {PATCH})')
+
+    ver_string = importlib.metadata.version("exprmat")
+    MAJOR, MINOR, REVISION = [int(x) for x in ver_string.split('.')]
+    info(f'exprmat {MAJOR}.{MINOR}.{REVISION}')
     info(f'os: {os.name} ({sys.platform})  platform version: {platform.release()}')
     info(f'current working directory: {os.getcwd()}')
     memory()
-    return (MAJOR, MINOR, REVISION, PATCH)
+    return (MAJOR, MINOR, REVISION)
 
 
 def memory():

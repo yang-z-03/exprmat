@@ -156,3 +156,7 @@ exprmat/data/*/
 !exprmat/data/*.py
 
 .idea
+
+Cargo.lock
+publish.sh
+build.sh

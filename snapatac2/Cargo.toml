@@ -1,6 +1,7 @@
 [package]
 name = "snapatac2"
 version = "2.8.0"
+edition = "2021"
 authors = ["Kai Zhang <kai@kzhang.org>"]
 license = "MIT"
 readme = "readme"

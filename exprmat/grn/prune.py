@@ -87,7 +87,7 @@ def auc1st(
 
     # calculate recovery curves, auc and nes values.
     # for fast unweighted implementation so weights to none.
-    aucs = calc_aucs(df, db.total_genes, weights, auc_threshold)
+    aucs = calc_aucs(df, db.n_genes, weights, auc_threshold)
     ness = (aucs - aucs.mean()) / aucs.std()
 
     # keep only features that are enriched, i.e. nes sufficiently high.
@@ -150,7 +150,7 @@ def auc1st(
     # check what is kept in memory in all subprocesses/workers.
 
     rccs, _ = recovery(
-        df, db.total_genes, weights, rank_threshold, auc_threshold, no_auc = True
+        df, db.n_genes, weights, rank_threshold, auc_threshold, no_auc = True
     )
 
     avgrcc = rccs.mean(axis = 0)
@@ -183,6 +183,7 @@ def module_to_df(
     weighted_recovery = False,
     return_recovery_curves = False,
     module2features_func = default_module_to_features,
+    verbose = False
 ) -> pd.DataFrame:
     
     try:
@@ -197,8 +198,12 @@ def module_to_df(
     n_missing = len(module) - len(genes)
     frac_missing = float(n_missing) / len(module)
     if frac_missing >= 0.20:
-        warning("less than 80 pct. of the genes in {} could be mapped to {}. skipped.".format(
-            module.name, db.name))
+        if verbose:
+            warning(
+                "less than 80 pct. of the genes in {} could be mapped to {}. skipped."
+                .format(module.name, db.name)
+            )
+
         return DF_META_DATA
 
     # if no annotated enriched features could be found, skip module.
@@ -255,6 +260,7 @@ def modules_to_df(
     weighted_recovery=False,
     return_recovery_curves = False,
     module2features_func = default_module_to_features,
+    verbose = False
 ) -> pd.DataFrame:
     
     # make sure return recovery curves is always set to false because the metadata 
@@ -263,6 +269,7 @@ def modules_to_df(
         module_to_df(
             db, module, motif_annotations,
             weighted_recovery, False, module2features_func,
+            verbose = verbose
         ) for module in modules
     ])
 
@@ -277,6 +284,7 @@ def distributed(
     orthologuous_identity_threshold: float = 0.0,
     num_workers = None,
     module_chunksize = 100,
+    verbose = False
 ):
 
     # this implementation overcomes the i/o-bounded performance. each worker (subprocess) 
@@ -307,6 +315,7 @@ def distributed(
                 motif_similarity_fdr,
                 orthologuous_identity_threshold,
                 transform_func,
+                verbose = verbose
             ).start()
 
     # retrieve the name of the temporary file to which the data is stored.
@@ -368,6 +377,7 @@ class Worker(Process):
         motif_similarity_fdr: float,
         orthologuous_identity_threshold: float,
         transformation_func,
+        verbose = False,
     ):
         super().__init__(name = name)
         self.database = db
@@ -377,10 +387,11 @@ class Worker(Process):
         self.orthologuous_identity_threshold = orthologuous_identity_threshold
         self.transform_fnc = transformation_func
         self.sender = sender
+        self.verbose = verbose
 
     def run(self):
 
-        info(f'job [{self.name}] started.')
+        # info(f'job [{self.name}] started.')
         # Load ranking database in memory.
         rnkdb = inmemory(self.database)
         # Load motif annotations in memory.
@@ -391,10 +402,11 @@ class Worker(Process):
         )
 
         output = self.transform_fnc(
-            rnkdb, self.modules, motif_annotations = motif_annotations
+            rnkdb, self.modules, motif_annotations = motif_annotations,
+            verbose = self.verbose
         )
 
-        info(f'job [{self.name}] finished.')
+        # info(f'job [{self.name}] finished.')
 
         # sending information back to parent process: to avoid overhead of pickling 
         # the data, the output is first written to disk in binary pickle format to a 
@@ -421,6 +433,7 @@ def prune(
     num_workers = None,
     module_chunksize = 100,
     filter_for_annotation = True,
+    verbose = False
 ) -> pd.DataFrame:
     
     """
@@ -474,4 +487,5 @@ def prune(
         orthologuous_identity_threshold,
         num_workers,
         module_chunksize,
+        verbose = verbose
     )

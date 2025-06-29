@@ -30,6 +30,7 @@ def prune(
     min_orthologous_identity = 0,
     chunk_size = 100,
     ncpus = 1,
+    verbose = False
 ):
     ex_mtx = choose_layer(adata, layer = layer)
     ex_mtx = pd.DataFrame(ex_mtx.todense())
@@ -63,6 +64,7 @@ def prune(
         num_workers = ncpus,
         motif_similarity_fdr = max_similarity_fdr,
         orthologuous_identity_threshold = min_orthologous_identity,
+        verbose = verbose
     )
 
     return df_motifs
@@ -70,7 +72,7 @@ def prune(
 
 # auc calculations
 from exprmat.descriptive.aucell import aucell
-
+from exprmat.grn.utils import df_to_regulons
 
 def auc_signature(
     adata,
@@ -82,7 +84,7 @@ def auc_signature(
     seed = 42
 ):
     ex_mtx = choose_layer(adata, layer = layer)
-    ex_mtx = pd.DataFrame(ex_mtx)
+    ex_mtx = pd.DataFrame(ex_mtx.todense())
     ex_mtx.columns = adata.var[gene].tolist()
 
     auc_mtx = aucell(
@@ -94,4 +96,5 @@ def auc_signature(
         num_workers = ncpus,
     )
 
+    auc_mtx.index = adata.obs_names.tolist()
     return auc_mtx

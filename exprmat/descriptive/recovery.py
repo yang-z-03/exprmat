@@ -8,6 +8,7 @@ from numba import jit
 
 from exprmat.data.signature import signature
 from exprmat.data.cistarget import ranking_db
+from exprmat.ansi import warning, info, error
 
 
 def derive_rank_cutoff(

@@ -18,7 +18,7 @@ use tikv_jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 #[pymodule]
-fn _snapatac2(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn snapatac(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
     // AnnData related functions

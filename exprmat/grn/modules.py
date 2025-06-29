@@ -72,7 +72,7 @@ def module_top_factors(
     adjacencies, n, context = frozenset()
 ):
 
-    df = adjacencies.groupby(by = df[COLUMN_NAME_TARGET].rename(None)).apply(
+    df = adjacencies.groupby(by = adjacencies[COLUMN_NAME_TARGET].rename(None)).apply(
         lambda grp: grp.nlargest(n, COLUMN_NAME_WEIGHT), include_groups = False)
     for tf_name, df_grp in df.groupby(by = COLUMN_NAME_TF):
         if len(df_grp) > 0:

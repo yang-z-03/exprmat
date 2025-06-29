@@ -96,7 +96,7 @@ def aucell4r(
                     module.noweights() if noweights else module,
                     auc_threshold = auc_threshold,
                 )
-                for module in track(signatures)
+                for module in track(signatures, description = 'auc')
             ]
         ).unstack("regulon")
         aucs.columns = aucs.columns.droplevel(0)
