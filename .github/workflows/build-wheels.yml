@@ -10,7 +10,12 @@ jobs:
       matrix:
         # macos-13 is an intel runner, macos-14 is apple silicon
         os: [ubuntu-latest, ubuntu-24.04-arm]
-
+    
+    env:
+      CIBW_BEFORE_BUILD_LINUX: curl -sSf https://sh.rustup.rs | sh -s -- -y
+      CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
+      CIBW_SKIP: "pp* *-win32"
+    
     steps:
       - uses: actions/checkout@v4
 
