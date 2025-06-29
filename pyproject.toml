@@ -1,0 +1,74 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "exprmat"
+module-name = "exprmat.snapatac"
+manifest-path = "snapatac2/cargo.toml"
+
+[project]
+name = "exprmat"
+version = "0.1.20"
+description = "exprmat: Routines for expression matrices"
+readme = "readme"
+license = {file = "license"}
+requires-python = ">=3.9, <3.13"
+
+authors = [
+    {name = "Zheng Yang", email = "xornent@outlook.com"}
+    {name = "Kai Zhang", email = "zhangkai33@westlake.edu.cn"}
+]
+
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy"
+]
+
+dependencies = [
+    'anndata >= 0.8.0',
+    'multiprocess',
+    'MACS3 >= 3.0, < 3.1',
+    'natsort', 
+    'numpy',
+    'pandas >= 2.0',
+    'polars >= 1.0, < 2.0',
+    'pooch >= 1.6.0, < 2.0.0',
+    'igraph >= 0.10.3',
+    'pyarrow',
+    'pyfaidx >= 0.7.0, < 0.8.0',
+    'rustworkx',
+    'scipy >= 1.4, < 2.0.0',
+    'scikit-learn >= 1.0, < 2.0.0',
+    'tqdm >= 4.62',
+    'typeguard >= 4.0',
+    'umap-learn >= 0.5.0',
+    'scvi-tools >= 1.3.0',
+    'scanpy',
+    'mudata',
+    'matplotlib',
+    'seaborn',
+    'torch >= 2.0',
+    'annoy',
+    'scikit-image',
+    'scikit-misc',
+    'bbknn',
+    'scanorama',
+    'harmonypy',
+    'pymde',
+    'datashader',
+    'fa2_modified',
+    'pynndescent',
+    'gseapy',
+    'metacells',
+    'sh',
+    'networkx',
+    'palantir',
+    'scfates',
+    'rich'
+]
+
+[project.urls]
+Repository = "https://github.com/yang-z-03/exprmat"

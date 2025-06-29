@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 
 import scipy
+import scipy.sparse
 from sklearn.ensemble import (
     GradientBoostingRegressor, 
     RandomForestRegressor, 
@@ -116,7 +117,7 @@ def fit_model(
 
     regressor_type = regressor_type.lower()
     if isinstance(target_gene_expression, scipy.sparse.spmatrix):
-        target_gene_expression = target_gene_expression.A.flatten()
+        target_gene_expression = target_gene_expression.todense().A.flatten()
     assert tf_matrix.shape[0] == target_gene_expression.shape[0]
 
     def do_sklearn_regression():

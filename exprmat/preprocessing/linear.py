@@ -10,10 +10,10 @@ from exprmat.ansi import warning, info
 
 
 def normalize_total(
-        E, total_counts = None, 
-        exclude_dominant_frac = 1, included_genes = [], 
-        target_total = None
-    ):
+    E, total_counts = None, 
+    exclude_dominant_frac = 1, included_genes = [], 
+    target_total = None
+):
     
     ''' 
     Cell-level total counts normalization of input counts matrix, excluding overly 
@@ -60,7 +60,7 @@ def normalize_total(
                 included_genes = np.asarray(~dominant_genes)[0,:]
                 tots_use = E[:, included_genes].sum(axis = 1)
                 info(f'{np.sum(~ included_genes)} genes seems to be dominant '
-                     f'(> {100 * exclude_dominant_frac:.1f}) in at least 1 of the cells.')
+                     f'(> {100 * exclude_dominant_frac:.1f}%) in at least 1 of the cells.')
         else: tots_use = E[:, included_genes].sum(axis = 1)
     else: tots_use = total_counts.copy()
 

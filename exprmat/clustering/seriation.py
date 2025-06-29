@@ -26,9 +26,9 @@ def seriation(Z, N, cur_index):
 
     if cur_index < N: return [cur_index]
     else:
-        left = int(Z[cur_index-N,0])
-        right = int(Z[cur_index-N,1])
-        return (seriation(Z,N,left) + seriation(Z,N,right))
+        left = int(Z[cur_index - N, 0])
+        right = int(Z[cur_index - N, 1])
+        return (seriation(Z, N, left) + seriation(Z, N, right))
     
 
 def serial_matrix(dist, method = "ward"):

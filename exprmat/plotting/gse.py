@@ -15,7 +15,7 @@ from matplotlib.colors import Normalize
 from matplotlib.category import UnitData
 from matplotlib.lines import Line2D
 
-from exprmat.ansi import error
+from exprmat.ansi import error, info
 
 
 class normalize_midpoint(Normalize):
@@ -700,12 +700,18 @@ class dotplot(object):
             area = (self.data["hits_ratio"] * self.scale * plt.rcParams["lines.markersize"]).pow(2)
         )
 
+        # filtering and renaming
+        y = self.y
+        df[y] = [self.formatter(z) for z in df[y]]
+        df = df.loc[~ df[y].isna(), :].copy()
+
+        info(f'retreived {len(df)} terms for plotting.')
+
         colmap = df[self.colname].astype(int)
         vmin = np.percentile(colmap.min(), 2)
         vmax = np.percentile(colmap.max(), 98)
         ax = self.get_ax()
         x, xlabel = self.set_x()
-        y = self.y
 
         # if x axis is numberic, prettifiy the plot with the numberic order
         if all(df[x].map(self.isfloat)): df = df.sort_values(by = x)
@@ -738,12 +744,12 @@ class dotplot(object):
             
         # inner circle
 
-        df2 = df.copy()
-        if self.formatter is not None:
-            df2[y] = [self.formatter(z) for z in df2[y]]
+        # df2 = df.copy()
+        # if self.formatter is not None:
+        #     df2[y] = [self.formatter(z) for z in df2[y]]
         
         sc = ax.scatter(
-            x = x, y = y, data = df2,
+            x = x, y = y, data = df,
             s = "area", edgecolors = "none",
             c = self.colname, cmap = self.cmap,
             vmin = vmin,

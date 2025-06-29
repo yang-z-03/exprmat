@@ -34,15 +34,15 @@ def run_infer_partial_network(
     target_gene_expression = ex_matrix[:, target_gene_index]
 
     n = infer_partial_network(
-        regressor_type=method_params[0],
-        regressor_kwargs=method_params[1],
-        tf_matrix=tf_matrix,
-        tf_matrix_gene_names=tf_matrix_gene_names,
-        target_gene_name=target_gene_name,
-        target_gene_expression=target_gene_expression,
-        include_meta=False,
-        early_stop_window_length=EARLY_STOP_WINDOW_LENGTH,
-        seed=seed,
+        regressor_type = method_params[0],
+        regressor_kwargs = method_params[1],
+        tf_matrix = tf_matrix,
+        tf_matrix_gene_names = tf_matrix_gene_names,
+        target_gene_name = target_gene_name,
+        target_gene_expression = target_gene_expression,
+        include_meta = False,
+        early_stop_window_length = EARLY_STOP_WINDOW_LENGTH,
+        seed = seed,
     )
     return n
 

@@ -843,7 +843,7 @@ class experiment:
     @staticmethod
     def rna_log_normalize(adata, sample_name, key_norm = 'norm', key_lognorm = 'lognorm', **kwargs):
         from exprmat.preprocessing import log_transform, normalize
-        normalize(adata, counts = 'X', dest = key_norm, method = 'total')
+        normalize(adata, counts = 'X', dest = key_norm, method = 'total', **kwargs)
         log_transform(adata, norm = key_norm, dest = key_lognorm)
         adata.layers['counts'] = adata.X
         adata.X = adata.layers[key_lognorm]
@@ -1396,17 +1396,18 @@ class experiment:
     
     @staticmethod
     def rna_consensus_nmf_extract_k(
-        adata, sample_name, k, nmf_slot = 'nmf', 
-        usage_added = 'nmf.{k}', 
-        spectra_added = 'nmf.{k}',
-        coef_added = 'nmf.coef.{k}',
-        spectra_cluster_dist_added = 'nmf.dist.{k}',
-        density_added = 'nmf.density.{k}'
+        adata, sample_name, k, nmf_slot = 'cnmf', 
+        usage_added = 'cnmf.{0}', 
+        spectra_added = 'cnmf.{0}',
+        coef_added = 'cnmf.coef.{0}',
+        spectra_cluster_dist_added = 'cnmf.dist.{0}',
+        density_added = 'cnmf.density.{0}',
+        **kwargs
     ):
         from exprmat.clustering.cnmf import cnmf
         from exprmat.preprocessing import normalize
 
-        kwargs = adata.uns[f'{nmf_slot}.args']
+        kwargs.update(adata.uns[f'{nmf_slot}.args'])
         comb = adata.uns[nmf_slot]
 
         _, res = cnmf(
@@ -1417,8 +1418,18 @@ class experiment:
 
         local_density, dist, _, rf_usages, spectra_tpm, usage_coef, _ = res
         adata.obsm[usage_added.format(k)] = rf_usages
-        adata.varm[spectra_added.format(k)] = spectra_tpm.T
-        adata.varm[coef_added.format(k)] = usage_coef.T
+        destindex = adata.var_names.tolist()
+
+        adata.varm[spectra_added.format(k)] = np.zeros((adata.n_vars, len(spectra_tpm)))
+        srcindex = spectra_tpm.columns.tolist()
+        mapping = [destindex.index(x) for x in srcindex]
+        adata.varm[spectra_added.format(k)][mapping, :] = spectra_tpm.T
+        
+        adata.varm[coef_added.format(k)] =  np.zeros((adata.n_vars, len(usage_coef)))
+        srcindex = usage_coef.columns.tolist()
+        mapping = [destindex.index(x) for x in srcindex]
+        adata.varm[coef_added.format(k)][mapping, :] = usage_coef.T
+
         adata.uns[spectra_cluster_dist_added.format(k)] = dist
         adata.uns[density_added.format(k)] = local_density
         return
@@ -2008,6 +2019,30 @@ class experiment:
     
     
     @staticmethod
+    def rna_plot_cnmf_density(adata, sample_name, **kwargs):
+        from exprmat.plotting.cnmf import cnmf_density
+        return cnmf_density(adata, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_cnmf_silhoutte(adata, sample_name, **kwargs):
+        from exprmat.plotting.cnmf import cnmf_silhoutte
+        return cnmf_silhoutte(adata, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_cnmf_distance_comps(adata, sample_name, **kwargs):
+        from exprmat.plotting.cnmf import cnmf_distance_comps
+        return cnmf_distance_comps(adata, **kwargs)
+    
+
+    @staticmethod
+    def rna_plot_cnmf_distance_usages(adata, sample_name, **kwargs):
+        from exprmat.plotting.cnmf import cnmf_distance_usages
+        return cnmf_distance_usages(adata, **kwargs)
+    
+
+    @staticmethod
     def rna_get_gsea(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
         
         df = {
@@ -2386,6 +2421,18 @@ class experiment:
     
     def plot_rna_velocity_streamline(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.rna_plot_velocity_streamline, **kwargs)
+    
+    def plot_rna_cnmf_silhoutte(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_cnmf_silhoutte, **kwargs)
+    
+    def plot_rna_cnmf_density(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_cnmf_density, **kwargs)
+
+    def plot_rna_cnmf_distance_comps(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_cnmf_distance_comps, **kwargs)
+
+    def plot_rna_cnmf_distance_usages(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, experiment.rna_plot_cnmf_distance_usages, **kwargs)
     
     def plot_sankey(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, experiment.adata_plot_sankey, **kwargs)

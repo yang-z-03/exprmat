@@ -169,12 +169,15 @@ def volcano(
     fc = []
     names = []
 
-    plots = experiment.rna_get_markers(
-        adata, de_slot = de_slot,
-        min_pct = min_pct, max_pct_reference = max_pct_reference, 
-        min_lfc = min_lfc, max_lfc = max_lfc, 
-        remove_zero_pval = remove_zero_pval
-    )
+    if isinstance(de_slot, str):
+        plots = experiment.rna_get_markers(
+            adata, de_slot = de_slot,
+            min_pct = min_pct, max_pct_reference = max_pct_reference, 
+            min_lfc = min_lfc, max_lfc = max_lfc, 
+            remove_zero_pval = remove_zero_pval
+        )
+        
+    else: plots = de_slot
     
     pvals = plots['log10.q'].tolist()
     fc = plots['lfc'].tolist()

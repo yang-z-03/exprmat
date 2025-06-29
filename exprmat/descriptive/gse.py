@@ -20,14 +20,23 @@ def gse(
     identifier = 'entrez'
 ):
     
-    params = adata.uns[de_slot]['params']
+    import pandas as pd
+    if isinstance(de_slot, pd.DataFrame):
+        assert 'names' in de_slot.columns
+        assert 'lfc' in de_slot.columns
+        assert 'log10.q' in de_slot.columns
+        tab = de_slot
 
-    # default value for convenience
-    if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
-        group_name = list(adata.uns[de_slot]['differential'].keys())[0]
+    else:    
 
-    info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
-    tab = adata.uns[de_slot]['differential'][group_name]
+        params = adata.uns[de_slot]['params']
+
+        # default value for convenience
+        if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
+            group_name = list(adata.uns[de_slot]['differential'].keys())[0]
+
+        info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
+        tab = adata.uns[de_slot]['differential'][group_name]
 
     if min_pct is not None and 'pct' in tab.columns:
         tab = tab[tab['pct'] >= min_pct]
@@ -116,19 +125,28 @@ def opa(
 ):
     
     if isinstance(de_slot, list):
-        genes = de_slot
+        genes = [x.replace('rna:', '') for x in de_slot]
         if translate_de_slot is not None:
-            genes = translate_id(taxa, genes, 'ugene', identifier, keep_nones = False)
+            genes = translate_id(taxa, genes, translate_de_slot, identifier, keep_nones = False)
 
     else:
-        params = adata.uns[de_slot]['params']
-    
-        # default value for convenience
-        if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
-            group_name = list(adata.uns[de_slot]['differential'].keys())[0]
-    
-        info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
-        tab = adata.uns[de_slot]['differential'][group_name]
+        
+        import pandas as pd
+        if isinstance(de_slot, pd.DataFrame):
+            assert 'names' in de_slot.columns
+            assert 'lfc' in de_slot.columns
+            assert 'log10.q' in de_slot.columns
+            tab = de_slot
+        
+        else:
+
+            params = adata.uns[de_slot]['params']
+            # default value for convenience
+            if len(adata.uns[de_slot]['differential']) == 1 and group_name == None:
+                group_name = list(adata.uns[de_slot]['differential'].keys())[0]
+        
+            info('fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '`')
+            tab = adata.uns[de_slot]['differential'][group_name]
         
         if min_pct is not None and 'pct' in tab.columns:
             tab = tab[tab['pct'] >= min_pct]
@@ -174,6 +192,13 @@ def opa(
         cutoff = opa_cutoff
     )
     
+    # we prefer to convert the gene names back for human readable results:
+    hrgenes = []
+    for generep in op.results['Genes'].tolist():
+        destids = generep.split(';')
+        sourcenames = translate_id(taxa, destids, identifier, 'gene', keep_nones = False)
+        hrgenes.append(';'.join(sourcenames))
+
     adata.uns[key_added] = {
         'gset': op.results['Gene_set'].tolist(),
         'term': op.results['Term'].tolist(),
@@ -182,7 +207,7 @@ def opa(
         'fdr': op.results['Adjusted P-value'].tolist(),
         'or': op.results['Odds Ratio'].tolist(),
         'score': op.results['Combined Score'].tolist(),
-        'genes': op.results['Genes'].tolist(),
+        'genes': hrgenes,
     }
 
 
