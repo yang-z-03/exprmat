@@ -8,7 +8,8 @@ python-source = "."
 module-name = "exprmat.snapatac"
 manifest-path = "snapatac2/Cargo.toml"
 exclude = [
-    "exprmat/data/**/*"
+    "exprmat/data/tools/**/*",
+    "exprmat/data/tools/*"
 ]
 
 [project]
@@ -17,7 +18,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.25"
+version = "0.1.28"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
