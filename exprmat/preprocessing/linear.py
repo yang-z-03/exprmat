@@ -74,6 +74,24 @@ def normalize_total(
     return e_norm.tocsc()
 
 
+def normalize_size_factor(x, size_factor = None):
+    result = x / (x.sum() / 1000000.0)
+    if size_factor is not None: result /= size_factor
+    return result
+
+
+def get_size_factor_for_regions(regions):
+    def size(x):
+        x = x.split(':')[1].split("-")
+        return int(x[1]) - int(x[0])
+    return np.array(list(size(x) for x in regions))
+
+
+def rpm(E):
+    return normalize_size_factor(E)
+
+
 normalize_linear_methods = {
-    'total': normalize_total
+    'total': normalize_total,
+    'rpm': rpm
 }

@@ -37,6 +37,44 @@ def get_genome(taxa):
     return genome[taxa]['genes']
 
 
+def get_genome_size(assembly):
+
+    import json
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'size.json')
+    with open(path, 'r', encoding = 'utf-8') as f:
+        sizes = json.load(f)
+    return sizes
+
+
+def get_genome_gff_fname(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'annotations.gff.gz')
+    return path
+
+
+def get_genome_architecture(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'architecture.tsv')
+    return pandas.read_table(path, sep = '\t')
+
+
+def get_genome_cytobands(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'cytobands.tsv')
+    return pandas.read_table(path, sep = '\t')
+
+
+def get_genome_model(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'gene-models.feather')
+    return pandas.read_feather(path)
+
+
 def get_mapper_name(taxa):
     '''
     Return a name mapper mapping from gene names to universal gene id across species.

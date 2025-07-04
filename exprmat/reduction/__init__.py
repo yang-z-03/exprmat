@@ -86,7 +86,7 @@ def run_umap(
     key_obsm, key_uns = ("umap", "umap") if key_added is None else [key_added] * 2
     if neighbors_key is None:
         neighbors_key = "neighbors"
-    if neighbors_key not in adata.uns:
+    if neighbors_key not in adata.uns.keys():
         error(f'do not find the key `{neighbors_key}` in uns slots')
     from umap.umap_ import find_ab_params, simplicial_set_embedding
 
@@ -94,7 +94,11 @@ def run_umap(
         a, b = find_ab_params(spread, min_dist)
     adata.uns[key_uns] = dict(params = dict(a = a, b = b))
 
-    if isinstance(init_pos, str) and init_pos in adata.obsm:
+    if (
+        isinstance(init_pos, str) and 
+        (init_pos in adata.obsm) and
+        (adata.obsm[init_pos].shape[1] == n_components)
+    ):
         init_coords = adata.obsm[init_pos]
     else: init_coords = init_pos # let umap handle it
 

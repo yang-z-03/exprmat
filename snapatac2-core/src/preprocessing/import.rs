@@ -105,7 +105,7 @@ where
         anndata.obsm().add_iter(obsm_key, arrays)?;
         anndata
             .uns()
-            .add("reference_sequences", chrom_sizes.to_dataframe())?;
+            .add("assembly.size", chrom_sizes.to_dataframe())?;
         anndata.set_obs_names(saved_barcodes.into())?;
         anndata.set_obs(qc_to_df(qc))?;
     } else {
@@ -212,15 +212,15 @@ where
 fn qc_to_df(qc: Vec<FragmentQC>) -> DataFrame {
     DataFrame::new(vec![
         Series::new(
-            "n_fragment",
+            "n.fragments",
             qc.iter().map(|x| x.num_unique_fragment).collect::<Series>(),
         ),
         Series::new(
-            "frac_dup",
+            "pct.dup",
             qc.iter().map(|x| x.frac_duplicated).collect::<Series>(),
         ),
         Series::new(
-            "frac_mito",
+            "pct.mito",
             qc.iter().map(|x| x.frac_mitochondrial).collect::<Series>(),
         ),
     ])
@@ -297,7 +297,7 @@ where
     anndata.set_var_names(anndata.n_vars().into())?;
 
     anndata.uns().add(
-        "reference_sequences",
+        "assembly.size",
         DataFrame::new(vec![
             Series::new(
                 "reference_seq_name",
@@ -401,7 +401,7 @@ where
     anndata.obsm().add_iter(BASE_VALUE, arrays)?;
     anndata
         .uns()
-        .add("reference_sequences", chrom_sizes.to_dataframe())?;
+        .add("assembly.size", chrom_sizes.to_dataframe())?;
     anndata.set_obs_names(scanned_barcodes.into_iter().collect())?;
     anndata.set_obs(DataFrame::new(vec![Series::new(
         "num_values",

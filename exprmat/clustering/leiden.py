@@ -27,6 +27,7 @@ def leiden(
     ----------
     adata
         The annotated data matrix.
+
     resolution
         A parameter value controlling the coarseness of the clustering. Higher values lead 
         to more clusters. Set to `None` if overriding `partition_type` to one that doesn't 

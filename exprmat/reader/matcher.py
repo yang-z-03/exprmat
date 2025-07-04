@@ -43,11 +43,11 @@ def refine_finder(features_fpath, taxa = 'mmu'):
             reference_name = ens.split('_')[0]
             pure_ens = ens.replace(reference_name + '_', '')
             pure_nm = nm.replace(reference_name + '_', '')
-            if not reference_name in cfg['taxa.reference'].keys():
+            if not reference_name.lower() in cfg['taxa.reference'].keys():
                 warning(f'gene {ens} seems to have a reference prefix, but not registered to taxa.')
                 continue
 
-            reference_taxa = cfg['taxa.reference'][reference_name]
+            reference_taxa = cfg['taxa.reference'][reference_name.lower()]
             alt_name_finder = get_mapper_name(reference_taxa)
             alt_ens_finder = get_mapper_ensembl(reference_taxa)
             if ((pure_nm not in alt_name_finder.keys()) or (pure_ens not in alt_ens_finder.keys())):
@@ -126,11 +126,11 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
                 reference_name = ens.split('_')[0]
                 pure_ens = ens.replace(reference_name + '_', '')
                 pure_nm = nm.replace(reference_name + '_', '')
-                if not reference_name in cfg['taxa.reference'].keys():
+                if not reference_name.lower() in cfg['taxa.reference'].keys():
                     warning(f'gene {ens} seems to have a reference prefix, but not registered to taxa.')
                     continue
 
-                reference_taxa = cfg['taxa.reference'][reference_name]
+                reference_taxa = cfg['taxa.reference'][reference_name.lower()]
                 alt_name_finder = get_mapper_name(reference_taxa)
                 alt_ens_finder = get_mapper_ensembl(reference_taxa)
                 if ((pure_nm not in alt_name_finder.keys()) or (pure_ens not in alt_ens_finder.keys())):
@@ -144,7 +144,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
         for taxa in mentioned_taxa:
             save_genome_changes(taxa)
 
-    if n_columns == 3: 
+    if n_columns >= 3: 
 
         fpath = os.path.join(path, 'genes.tsv')
         if os.path.exists(fpath):
@@ -195,13 +195,13 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
                 reference_name = x.split('_')[0]
                 pure_nm = x.replace(reference_name + '_', '')
                 
-                if not reference_name in cfg['taxa.reference'].keys():
+                if not reference_name.lower() in cfg['taxa.reference'].keys():
                     warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
                     query_ensembl += [x]
                     n_not_found += 1
                     continue
 
-                reference_taxa = cfg['taxa.reference'][reference_name]
+                reference_taxa = cfg['taxa.reference'][reference_name.lower()]
                 alt_name_finder = get_genome(reference_taxa)['gene'].tolist()
                 alt_ens_finder = get_genome(reference_taxa)['ensembl'].tolist()
 
@@ -475,13 +475,13 @@ def match_matrix_rna(
             reference_name = x.split('_')[0]
             pure_nm = x.replace(reference_name + '_', '')
 
-            if not reference_name in cfg['taxa.reference'].keys():
+            if not reference_name.lower() in cfg['taxa.reference'].keys():
                 warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
                 gmask.append(False)
                 not_in_list.append(x)
                 continue
 
-            reference_taxa = cfg['taxa.reference'][reference_name]
+            reference_taxa = cfg['taxa.reference'][reference_name.lower()]
             alt_finder_name = get_mapper_name(reference_taxa)
             alt_finder_ens = get_mapper_ensembl(reference_taxa)
 
@@ -894,13 +894,13 @@ def attach_splice_reads_mtx(adata, folder, default_taxa, sample):
             reference_name = x.split('_')[0]
             pure_nm = x.replace(reference_name + '_', '')
 
-            if not reference_name in cfg['taxa.reference'].keys():
+            if not reference_name.lower() in cfg['taxa.reference'].keys():
                 warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
                 gmask.append(False)
                 not_in_list.append(x)
                 continue
 
-            reference_taxa = cfg['taxa.reference'][reference_name]
+            reference_taxa = cfg['taxa.reference'][reference_name.lower()]
             alt_finder_name = get_mapper_name(reference_taxa)
             alt_finder_ens = get_mapper_ensembl(reference_taxa)
 
@@ -996,13 +996,13 @@ def attach_splice_reads_loom(adata, loom_file, default_taxa, sample):
             reference_name = x.split('_')[0]
             pure_nm = x.replace(reference_name + '_', '')
 
-            if not reference_name in cfg['taxa.reference'].keys():
+            if not reference_name.lower() in cfg['taxa.reference'].keys():
                 warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
                 gmask.append(False)
                 not_in_list.append(x)
                 continue
 
-            reference_taxa = cfg['taxa.reference'][reference_name]
+            reference_taxa = cfg['taxa.reference'][reference_name.lower()]
             alt_finder_name = get_mapper_name(reference_taxa)
             alt_finder_ens = get_mapper_ensembl(reference_taxa)
 

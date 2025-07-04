@@ -10,20 +10,32 @@ class Configuration:
 
         # font family settings
 
-        self.config['plotting.family'] = 'Arial'
-        self.config['plotting.font'] = None
-        self.config['plotting.font.b'] = None
-        self.config['plotting.font.i'] = None
-        self.config['plotting.font.bi'] = None
+        self.config['plotting.font'] = [
+            'Helvetica Neue LT Std', 
+            'Helvetica', 
+            'Arial', 
+            'Ubuntu', 
+            'Verdana'
+        ]
+        
+        self.config['backend'] = 'TkAgg'
         self.config['data'] = os.path.join(os.path.dirname(__file__), 'data')
 
         # target taxa
 
         self.config['taxa.reference'] = {
-            'mm10': 'mmu',
-            'hg19': 'hsa',
-            'GRCm39': 'mmu',
-            'GRCh38': 'hsa'
+            'mm10': 'mmu', # alias of grcm38
+            'grcm39': 'mmu',
+            'grcm38': 'mmu',
+
+            'hg19': 'hsa', # alias of grch37
+            'grch37': 'hsa',
+            'grch38': 'hsa',
+        }
+
+        self.config['default.assembly'] = {
+            'mmu': 'grcm39',
+            'hsa': 'grch38'
         }
 
 

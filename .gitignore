@@ -160,3 +160,4 @@ exprmat/data/*/
 Cargo.lock
 publish.sh
 build.sh
+reinstall.sh

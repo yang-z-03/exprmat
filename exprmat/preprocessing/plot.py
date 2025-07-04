@@ -1,13 +1,10 @@
 
-from exprmat.utils import setup_styles, plotting_styles
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 
 def rna_plot_qc_metrics(adata, sample_name, figsize = (10, 2.2)):
 
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-
-    setup_styles(**plotting_styles)
     fig, axes = plt.subplots(1, 4)
 
     axes[0].hist(adata.obs['n.umi'].tolist(), bins = 100)

@@ -7,6 +7,12 @@ import numba
 from numba import njit
 
 from exprmat.ansi import warning, info, error
+import exprmat.snapatac as internal
+from exprmat.utils import get_file_format, anndata_rs_ipar, anndata_rs_par
+from exprmat.reduction.spectral import spectral
+from exprmat.descriptive.aggregate import aggregate_groups
+from exprmat.reduction.nn import knn_graph
+from exprmat.clustering.leiden import leiden
 
 
 def running_quantile(x, y, p, n_bins = 20):
@@ -591,3 +597,167 @@ def stable_genes(E, modality = 'rna', stable_number = None, use_signal_to_noise 
 
     result = np.transpose(result)
     return result
+
+
+def most_accessible_regions(
+    feature_count,
+    filter_lower_quantile,
+    filter_upper_quantile,
+    total_features,
+) -> np.ndarray:
+    
+    idx = np.argsort(feature_count)
+    for i in range(idx.size):
+        if feature_count[idx[i]] > 0:
+            break
+
+    idx = idx[i:]
+    n = idx.size
+    n_lower = int(filter_lower_quantile * n)
+    n_upper = int(filter_upper_quantile * n)
+    idx = idx[n_lower:n-n_upper]
+    return idx[::-1][:total_features]
+
+
+def select_features_atac_bins(
+    adata: internal.AnnData | internal.AnnDataSet | list[internal.AnnData],
+    n_features: int = 500000,
+    filter_lower_quantile: float = 0.005,
+    filter_upper_quantile: float = 0.005,
+    whitelist = None,
+    blacklist = None,
+    max_iter: int = 1,
+    inplace: bool = True,
+    n_jobs: int = 8,
+    verbose: bool = False,
+) -> np.ndarray | list[np.ndarray] | None:
+    """
+    Perform feature selection by selecting the most accessibile features across
+    all cells unless `max_iter` > 1. This function does not perform the actual subsetting. 
+    The feature mask is used by various functions to generate submatrices on the fly.
+    Features that are zero in all cells will be always removed regardless of the
+    filtering criteria. 
+
+    Feature selection plays a critical role in dimension reduction analysis. Unfortunately, 
+    there is no consensus on the best feature selection method in scATAC-seq analysis. As the 
+    scATAC-seq count matrix is sparse, computing the variability of features is difficult, 
+    so dispersion-based methods used in scRNA-seq cannot be applied here.
+
+    A simple strategy is to select features based on their total accessibility across all 
+    cells. In such a strategy, the top N accessible features are selected for dimension 
+    reduction analysis. By carefully selecting the value of N, one can achieve significant 
+    variations in the quality and nature of the resulting embeddings. This is because 
+    the choice of N impacts the level of detail and specificity captured in the representation. 
+    Thus, it is crucial to explore and evaluate the effects of different N values to ensure 
+    that the resulting embeddings align with the intended objectives and provide valuable 
+    insights for the given application. As a rule of thumb, large datasets with more complex 
+    structures will benefit from larger Ns, while small datasets with fewer cell types or 
+    less prominent cluster structures should go with smaller Ns.
+
+    Another strategy is to use multiple rounds of feature selections, as implemented in 
+    ArchR. First, an initial feature set is selected using the strategy above. Dimension 
+    reduction and clustering are then performed using this feature set to get initial 
+    clusters. Single cells are then grouped and aggregated according to cluster labels and 
+    variable features are identified at the cluster level. One can choose to continue this 
+    process or stop and use these variable features in downstream analysis.
+
+    Both strategies have been implemented in SnapATAC2's pp.select_features function. 
+    It is advised for users to play with the n_features parameter for different datasets 
+    and visualize the differences. The iterative feature selection can be turned on by 
+    setting max_iter >= 2. However, I'm a bit skeptical about this method, as this method is 
+    likely to propagate the clustering error or noise to subsequent rounds of feature 
+    selection steps and produce artificial clusters (despite being visually pleasing). 
+    In a nutshell, the iterative feature selection use some arbitrary parameters to obtain 
+    clusters, and then use that information to select features (train the model) in order 
+    to make these cluster structure more prominent and visually pleasing.
+
+    Parameters
+    ----------
+    n_features
+        Number of features to keep. Note that the final number of features
+        may be smaller than this number if there is not enough features that pass
+        the filtering criteria.
+
+    filter_lower_quantile
+        Lower quantile of the feature count distribution to filter out.
+        For example, 0.005 means the bottom 0.5% features with the lowest counts will be removed.
+
+    filter_upper_quantile
+        Upper quantile of the feature count distribution to filter out.
+        For example, 0.005 means the top 0.5% features with the highest counts will be removed.
+        Be aware that when the number of feature is very large, the default value of 0.005 may
+        risk removing too many features.
+
+    whitelist
+        A user provided bed file containing genome-wide whitelist regions. None-zero features 
+        listed here will be kept regardless of the other filtering criteria.
+        If a feature is present in both whitelist and blacklist, it will be kept.
+
+    blacklist 
+        A user provided bed file containing genome-wide blacklist regions.
+        Features that are overlapped with these regions will be removed.
+
+    max_iter
+        If greater than 1, this function will perform iterative clustering and feature selection
+        based on variable features found using previous clustering results.
+        This is similar to the procedure implemented in ArchR, but we do not recommend it,
+        see https://github.com/scverse/SnapATAC2/issues/111.
+        Default value is 1, which means no iterative clustering is performed.
+    """
+
+    if isinstance(adata, list):
+        result = anndata_rs_par(
+            adata, lambda x: select_features_atac_bins(
+                x, n_features, filter_lower_quantile, filter_upper_quantile, 
+                whitelist, blacklist, max_iter, inplace, verbose = False
+            ), n_jobs = n_jobs,
+        )
+
+        if inplace: return None
+        else: return result
+
+    count = np.zeros(adata.shape[1])
+    for batch, _, _ in adata.chunked_X(2000):
+        count += np.ravel(batch.sum(axis = 0))
+    if inplace: adata.var['count'] = count
+
+    selected_features = most_accessible_regions(
+        count, filter_lower_quantile, filter_upper_quantile, n_features)
+
+    if blacklist is not None:
+        blacklist = np.array(internal.intersect_bed(adata.var_names, str(blacklist)))
+        selected_features = selected_features[np.logical_not(blacklist[selected_features])]
+
+    # Iteratively select features
+    iter = 1
+    while iter < max_iter:
+        embedding = spectral(adata, features = selected_features, inplace = False)[1]
+        _, _, dist_mat = knn_graph(embedding, k = 50, approx = True)
+        
+        leiden(
+            adata, adjacency = dist_mat, key_added = '.leiden', resolution = 2,
+            flavor = 'igraph', n_iterations = 2
+        )
+
+        rpm = aggregate_groups(adata, groupby = '.leiden').X
+        var = np.var(np.log(rpm + 1), axis = 0)
+        selected_features = np.argsort(var)[::-1][:n_features]
+
+        # Apply blacklist to the result
+        if blacklist is not None:
+            selected_features = selected_features[np.logical_not(blacklist[selected_features])]
+        iter += 1
+
+    result = np.zeros(adata.shape[1], dtype=bool)
+    result[selected_features] = True
+
+    # Finally, apply whitelist to the result
+    if whitelist is not None:
+        whitelist = np.array(internal.intersect_bed(adata.var_names, str(whitelist)))
+        whitelist &= count != 0
+        result |= whitelist
+    
+    if verbose: info(f"selected {result.sum()} features.")
+
+    if inplace: adata.var["selected"] = result
+    else: return result

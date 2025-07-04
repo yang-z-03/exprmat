@@ -9,7 +9,7 @@ import matplotlib.text as mtext
 from matplotlib.colors import ListedColormap as listedcm
 
 from exprmat.ansi import warning, error
-from exprmat.utils import setup_styles, plotting_styles, choose_layer
+from exprmat.utils import setup_styles, choose_layer
 
 
 class index_object:
@@ -335,7 +335,7 @@ def embedding(
     xlabel = None, ylabel = None
 ):
     
-    setup_styles(**plotting_styles)
+    setup_styles()
     import pandas as pd
     import seaborn as sb
     from scipy.sparse import issparse
@@ -642,7 +642,7 @@ def gene_gene(
     remove_zero_expression = False,
     scale = 'asis', arcsinh_divider = None
 ):
-    setup_styles(**plotting_styles)
+    setup_styles()
     import pandas as pd
     import seaborn as sb
     from scipy.sparse import issparse

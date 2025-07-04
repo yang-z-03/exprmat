@@ -16,7 +16,7 @@ from exprmat.data.finders import basepath
 def select_resource(taxa, resource_name: str = V.resource_name) -> DataFrame:
     
     resource_name = resource_name.lower()
-    resource_path = os.path.join(basepath, taxa, 'lr', resource_name)
+    resource_path = os.path.join(basepath, taxa, 'lr', resource_name + '.tsv')
 
     if not os.path.exists(resource_path):
         error(f"ligand-receptor interaction database name `{taxa}/{resource_name}` not found.")

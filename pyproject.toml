@@ -8,9 +8,7 @@ python-source = "."
 module-name = "exprmat.snapatac"
 manifest-path = "snapatac2/Cargo.toml"
 exclude = [
-    "exprmat/data/**/genesets/curated",
-    "exprmat/data/**/mapping-*.pkl",
-    "exprmat/data/**/tf/**"
+    "exprmat/data/**/*"
 ]
 
 [project]
@@ -19,7 +17,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.24"
+version = "0.1.25"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -77,7 +75,19 @@ dependencies = [
     'frozendict',
     'dask',
     'boltons',
-    'multiprocessing_on_dill'
+    'multiprocessing_on_dill',
+    'pysam',
+    'hdbscan',
+    'graphtools',
+    'bincsync'
+]
+
+[project.optional-dependencies]
+dev = [
+    'sphinx',
+    'sphinx-rtd-theme',
+    'twine',
+    'ipykernel'
 ]
 
 [project.urls]

@@ -230,7 +230,7 @@ def load_metadata(fpath):
     Read the metadata table from disk.
     '''
 
-    df = pandas.read_table(fpath, sep = '\t', index_col = None)
+    df = pandas.read_table(fpath, sep = '\t', index_col = None, comment = '#')
     assert 'location' in df.columns
     assert 'sample' in df.columns
     assert 'batch' in df.columns

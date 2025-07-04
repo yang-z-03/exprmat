@@ -1,7 +1,9 @@
+
 import numpy as np
 import scipy
 import scipy.sparse
 import anndata as ad
+import gc
 
 from exprmat.ansi import warning, info
 from exprmat.preprocessing import (
@@ -9,6 +11,7 @@ from exprmat.preprocessing import (
     index_to_bool, bool_to_index, scale)
 from exprmat.preprocessing.sparse import sparse_var
 from exprmat.reduction.pca import pca
+from exprmat.reduction.spectral import spectral
 from exprmat.reduction.nn import knn_graph
 
 
@@ -90,17 +93,16 @@ def scrublet_init(
 
 def scrublet(
     adata, 
+    features = 'ff.hvg',
     synthetic_doublet_umi_subsampling = 1.0, 
     use_approx_neighbors = True, 
     distance_metric = 'euclidean', 
-    get_doublet_neighbor_parents = False, 
     min_counts = 3, 
     min_cells = 3, 
     min_gene_variability_pct = 85,
     n_comp = 30, 
     svd_solver = 'arpack',
     verbose = True,
-    force_recalculate = False
 ):
     '''
     Standard pipeline for preprocessing, doublet simulation, and doublet prediction.
@@ -168,22 +170,22 @@ def scrublet(
     postnorm_total = adata.obs['n.umi'].mean()
 
     if 'norm' in adata.layers.keys(): 
-        warning('[!] use existing slot `norm` as normalized linear.')
+        warning('use existing slot `norm` as normalized linear.')
     else: normalize(
         adata, counts = adata.uns['scrublet']['counts'], dest = 'norm',
         method = 'total', target_total = postnorm_total, 
         total_counts = adata.obs['n.umi']
     )
     
-    if 'ff.hvg' in adata.var.keys():
-        warning('[!] use existing slot `ff.hvg` as gene filter') 
+    if features in adata.var.keys():
+        warning(f'use existing slot `{features}` as gene filter') 
     else: highly_variable(
         adata, counts = adata.uns['scrublet']['counts'], dest = 'ff',
         method = 'ff', min_counts = min_counts, min_cells = min_cells, 
         min_vscore_pct = min_gene_variability_pct
     )
     
-    f_counts = expr[bool_to_index(adata.obs['qc']), :][:, bool_to_index(adata.var['ff.hvg'])]
+    f_counts = expr[bool_to_index(adata.obs['qc']), :][:, bool_to_index(adata.var[features])]
     subset = ad.AnnData(f_counts)
     subset.obs['n.umi'] = adata.obs['n.umi']
     adata.uns['hvg.subset'] = subset
@@ -242,6 +244,81 @@ def scrublet(
     return call_doublets(adata, verbose = verbose)
 
 
+def scrublet_spectrum(
+    adata, 
+    features = 'selected',
+    synthetic_doublet_umi_subsampling = 1.0, 
+    use_approx_neighbors = True, 
+    distance_metric = 'euclidean',
+    n_comp = 30, 
+    svd_solver = 'arpack',
+    verbose = True,
+):
+
+    adata.uns['simulated'] = None
+
+    if verbose: info('preprocessing observation count matrix ...')
+    expr = adata.X if adata.uns['scrublet']['counts'] == 'X' else \
+        adata.layers[adata.uns['scrublet']['counts']]
+    
+    # here, it should n fragments for bins.
+    # however, the other part of scrublet call this as 'n.umi'.
+    if 'n.umi' not in adata.obs.keys():
+        adata.obs['n.umi'] = expr.sum(1).A.squeeze()
+    
+    # do not normalize and select features. use all bins on all cells.
+    # low quality cells are filtered by hand before this.
+    
+    f_counts = expr[:, bool_to_index(adata.var[features])]
+    subset = ad.AnnData(f_counts).copy()
+    subset.obs['n.umi'] = adata.obs['n.umi']
+    adata.uns['hvg.subset'] = subset
+
+    if verbose: info('simulating doublets ...')
+    adata.uns['scrublet']['synthetic_doublet_umi_subsampling'] = \
+        synthetic_doublet_umi_subsampling
+    
+    # this populates the adata.uns['simulated'].
+    simulate_doublets(
+        adata, f_counts, 
+        sim_doublet_ratio = adata.uns['scrublet']['sim_doublet_ratio'], 
+        synthetic_doublet_umi_subsampling = synthetic_doublet_umi_subsampling
+    )
+
+    if verbose: info('embedding using spectrum ...')
+    n = f_counts.shape[0]
+    merged_matrix = scipy.sparse.vstack([f_counts, adata.uns['simulated'].X])
+
+    _, evecs = spectral(
+        ad.AnnData(X = merged_matrix),
+        features = None, 
+        # use all features. since feature selection is not valid here
+        # selecting bins are far more challenging than selecting highly variable genes.
+        n_comps = n_comp,
+        inplace = False,
+    )
+
+    manifold = np.asanyarray(evecs)
+    manifold_obs = manifold[0:n, ]
+    manifold_sim = manifold[n:, ]
+
+    adata.obsm['spectral'] = manifold_obs
+    adata.uns['hvg.subset'].obsm['spectral'] = manifold_obs
+    adata.uns['simulated'].obsm['spectral'] = manifold_sim
+    
+    if verbose: info('calculating doublet scores ...')
+    calculate_doublet_scores(
+        adata,
+        use_approx_neighbors = use_approx_neighbors,
+        distance_metric = distance_metric,
+        embedding = 'spectral'
+    )
+
+    del adata.uns['hvg.subset']
+    gc.collect()
+    return call_doublets(adata, verbose = verbose)
+
+
 def simulate_doublets(adata, e_obs, sim_doublet_ratio = None, synthetic_doublet_umi_subsampling = 1.0):
     '''
     Simulate doublets by adding the counts of random observed transcriptome pairs.
@@ -294,7 +371,8 @@ def simulate_doublets(adata, e_obs, sim_doublet_ratio = None, synthetic_doublet_
 def calculate_doublet_scores(
     adata, 
     use_approx_neighbors = True, 
-    distance_metric = 'euclidean'
+    distance_metric = 'euclidean',
+    embedding = 'pca'
 ):
     '''
     Calculate doublet scores for observed transcriptomes and simulated doublets.
@@ -322,18 +400,19 @@ def calculate_doublet_scores(
         exp_doub_rate = adata.uns['scrublet']['expected_doublet_rate'],
         stdev_doub_rate = adata.uns['scrublet']['stdev_doublet_rate'],
         use_approx_nn = use_approx_neighbors, 
-        distance_metric = distance_metric
+        distance_metric = distance_metric,
+        embedding = embedding
     )
 
 
 def doublet_nn(
     adata, k = 40, use_approx_nn = True, distance_metric = 'euclidean', 
-    exp_doub_rate = 0.1, stdev_doub_rate = 0.03
+    exp_doub_rate = 0.1, stdev_doub_rate = 0.03, embedding = 'pca'
 ):
-    manifold = np.vstack((adata.uns['hvg.subset'].obsm['pca'], adata.uns['simulated'].obsm['pca']))
+    manifold = np.vstack((adata.uns['hvg.subset'].obsm[embedding], adata.uns['simulated'].obsm[embedding]))
     doub_labels = np.concatenate((
-        np.zeros(adata.uns['hvg.subset'].obsm['pca'].shape[0], dtype = int), 
-        np.ones(adata.uns['simulated'].obsm['pca'].shape[0], dtype = int)
+        np.zeros(adata.uns['hvg.subset'].obsm[embedding].shape[0], dtype = int), 
+        np.ones(adata.uns['simulated'].obsm[embedding].shape[0], dtype = int)
     ))
 
     n_obs = np.sum(doub_labels == 0)

@@ -17,10 +17,10 @@ use polars::frame::DataFrame;
 use crate::genome::ChromSizes;
 
 /// Key for storing single-end fragment data in the `.obsm` matrix.
-pub const FRAGMENT_SINGLE: &str = "fragment_single";
+pub const FRAGMENT_SINGLE: &str = "single";
 
 /// Key for storing paired-end fragment data in the `.obsm` matrix.
-pub const FRAGMENT_PAIRED: &str = "fragment_paired";
+pub const FRAGMENT_PAIRED: &str = "paired";
 
 /// Key for storing base values in the `.obsm` matrix.
 pub const BASE_VALUE: &str = "__values__";
@@ -57,7 +57,7 @@ pub trait SnapData: AnnDataOp {
     fn read_chrom_sizes(&self) -> Result<ChromSizes> {
         let df = self
             .uns()
-            .get_item::<DataFrame>("reference_sequences")?
+            .get_item::<DataFrame>("assembly.size")?
             .context("key 'reference_sequences' is not present in the '.uns'")?;
         let chrs = df.column("reference_seq_name").unwrap().str()?;
         let chr_sizes = df.column("reference_seq_length").unwrap().u64()?;
