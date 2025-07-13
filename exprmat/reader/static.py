@@ -765,6 +765,16 @@ def rna_plot_embedding(adata, sample_name, **kwargs):
     return embedding(adata, sample_name = sample_name, **kwargs)
 
 
+def rna_plot_embedding_mask(adata, sample_name, color, values, **kwargs):
+    from exprmat.reduction.plot import embedding
+    if color in adata.obs.keys():
+        adata.obs['.mask'] = [x in values for x in adata.obs[color]]
+    else: error('`color` must be within adata.obs')
+    fig = embedding(adata, sample_name = sample_name, color = '.mask', **kwargs)
+    if color in adata.obs.keys(): del adata.obs['.mask']
+    return fig
+
+
 def rna_plot_embedding_atlas(adata, sample_name, **kwargs):
     from exprmat.reduction.plot import embedding_atlas
     return embedding_atlas(adata, sample_name = sample_name, **kwargs)
@@ -782,11 +792,25 @@ def rna_plot_gene_gene_regress(adata, sample_name, **kwargs):
 def rna_plot_markers(adata, sample_name, figsize, dpi, **kwargs):
     from exprmat.plotting.de import marker_plot
     pl = marker_plot(adata, sample_name = sample_name, **kwargs)
-    pl.width = figsize[0]
-    pl.height = figsize[1]
-    pl.show()
-    pl.fig.set_dpi(dpi)
-    return pl.fig
+
+    from scanpy.plotting import DotPlot, StackedViolin, MatrixPlot
+    if isinstance(pl, DotPlot) or isinstance(pl, StackedViolin) or isinstance(pl, MatrixPlot):
+        pl.width = figsize[0]
+        pl.height = figsize[1]
+        pl.show()
+        pl.fig.set_dpi(dpi)
+        return pl.fig
+    
+    else:
+        fig = pl['heatmap_ax'].figure if 'heatmap_ax' in pl.keys() else None
+        fig = pl['track_axes'][0].figure if 'track_axes' in pl.keys() else fig
+
+        if fig:
+            fig.set_dpi(dpi)
+            fig.set_figwidth(figsize[0])
+            fig.set_figheight(figsize[1])
+            return fig
+    
 
 
 def rna_plot_expression_bar(

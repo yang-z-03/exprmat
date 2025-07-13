@@ -1103,6 +1103,9 @@ class experiment:
     def plot_rna_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_embedding, **kwargs)
     
+    def plot_rna_embedding_mask(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_embedding_mask, **kwargs)
+    
     def plot_rna_embedding_atlas(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_embedding_atlas, **kwargs)
 

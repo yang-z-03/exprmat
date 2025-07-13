@@ -280,8 +280,8 @@ def marker_plot(
             adata,
             var_names,
             groupby,
-            show=show,
-            save=save,
+            show = False,
+            save = save,
             gene_symbols = gene_symbols,
             **kwds,
         )
@@ -293,8 +293,8 @@ def marker_plot(
             adata,
             var_names,
             groupby,
-            show=show,
-            save=save,
+            show = False,
+            save = save,
             gene_symbols = gene_symbols,
             **kwds,
         )

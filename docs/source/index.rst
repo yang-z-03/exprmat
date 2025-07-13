@@ -1,5 +1,5 @@
 
-exprmat Documentation
+exprmat 文档
 =====================
 
 `exprmat` is a Python package to manipulate single cell expression matrices or
@@ -12,11 +12,10 @@ to be stable until the release. (Major version 1). We do not include any
 external dependencies other than the depended Python packages. Especially, we 
 try to avoid program level interaction between R and other commandline tools.
 
-References:
-
 .. toctree::
-    :maxdepth: 2
+    :titlesonly:
+    :hidden:
 
     exprmat
     metadata
-    experiment
+    experiment/index
