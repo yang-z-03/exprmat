@@ -1,4 +1,4 @@
-sphinx==7.1.2
+sphinx
 sphinxawesome-theme==5.3.2
 numpy
 anndata
