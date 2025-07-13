@@ -71,7 +71,7 @@ class experiment:
 
             attempt_path = os.path.join(dump, i_mod, i_sample + '.h5ad')
             if os.path.exists(attempt_path):
-                if not i_loc in self.modalities.keys(): self.modalities[i_mod] = {}
+                if not i_mod in self.modalities.keys(): self.modalities[i_mod] = {}
                 self.modalities[i_mod][i_sample] = sc.read_h5ad(attempt_path)
                 warning(f'load pre-exisiting file `{i_mod}/{i_sample}.h5ad`.')
                 continue
@@ -534,7 +534,7 @@ class experiment:
         self, run_on_samples, func,
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
-        self.plot_for_modality(
+        return self.plot_for_modality(
             'rna', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
@@ -543,7 +543,7 @@ class experiment:
         self, run_on_samples, func,
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
-        self.plot_for_modality(
+        return self.plot_for_modality(
             'atac', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
@@ -552,17 +552,16 @@ class experiment:
         self, run_on_samples, func,
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
-        self.plot_for_modality(
+        return self.plot_for_modality(
             'atac.cp', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
-
 
     def plot_for_atac_gene_activity(
         self, run_on_samples, func,
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
-        self.plot_for_modality(
+        return self.plot_for_modality(
             'atac.g', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )

@@ -11,3 +11,12 @@ This package is in early development, and the APIs are not stable. It is not pla
 to be stable until the release. (Major version 1). We do not include any 
 external dependencies other than the depended Python packages. Especially, we 
 try to avoid program level interaction between R and other commandline tools.
+
+References:
+
+.. toctree::
+    :maxdepth: 2
+
+    exprmat
+    metadata
+    experiment

@@ -368,6 +368,28 @@ seurat_to_10x <- function(srat, outdir) {
     sparse <- Matrix(srat @ assays $ RNA @ counts, sparse = T)
     writeMM(sparse, file = paste(outdir, 'matrix.mtx', sep = '/'))
 }
+
+spmatrix_to_mtx <- function(sp, outdir) {
+    features <- data.frame(
+        ensembl = rownames(sp),
+        gene = rownames(sp),
+        tag = "Gene Expression"
+    )
+
+    write(
+        x = colnames(sp),
+        file = paste(outdir, 'barcodes.tsv', sep = '/')
+    )
+    
+    write.table(
+        x = features,
+        file = paste(outdir, 'features.tsv', sep = '/'),
+        sep = "\t", quote = FALSE, col.names = FALSE, row.names = FALSE
+    )
+
+    require(Matrix)
+    writeMM(sp, file = paste(outdir, 'matrix.mtx', sep = '/'))
+}
 '''
 
 

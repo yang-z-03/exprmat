@@ -5,7 +5,6 @@ import pandas as pd
 from scipy.sparse import issparse
 from sklearn.utils import sparsefuncs
 
-from scvelo.core import get_initial_size, set_initial_size
 from exprmat.preprocessing import normalize, log1p
 from exprmat.dynamics.generank import get_mean_var
 from exprmat.dynamics.linreg import sum, multiply

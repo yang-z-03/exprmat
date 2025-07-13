@@ -612,9 +612,13 @@ def rna_consensus_nmf(
         return_k = None, # for the first round, return statistics
         **kwargs
     )
+    
+    combs = {}
+    for ky in comb.keys():
+        combs[str(ky)] = comb[ky]
 
     stats = pd.DataFrame(stats, index = ['ncomps', 'threshold', 'silhoutte', 'error']).T
-    adata.uns[key_added] = comb
+    adata.uns[key_added] = combs
     adata.uns[f'{key_added}.stats'] = stats
     adata.uns[f'{key_added}.args'] = kwargs
 
@@ -632,7 +636,10 @@ def rna_consensus_nmf_extract_k(
     from exprmat.preprocessing import normalize
 
     kwargs.update(adata.uns[f'{nmf_slot}.args'])
-    comb = adata.uns[nmf_slot]
+    
+    comb = {}
+    for ky in adata.uns[nmf_slot].keys():
+        comb[int(ky)] = adata.uns[nmf_slot][ky]
 
     _, res = cnmf(
         adata, comb = comb,
@@ -641,6 +648,7 @@ def rna_consensus_nmf_extract_k(
     )
 
     local_density, dist, _, rf_usages, spectra_tpm, usage_coef, _ = res
+    rf_usages.columns = ['C' + str(x) for x in rf_usages.columns]
     adata.obsm[usage_added.format(k)] = rf_usages
     destindex = adata.var_names.tolist()
 
@@ -1319,6 +1327,11 @@ def rna_plot_cnmf_distance_comps(adata, sample_name, **kwargs):
 def rna_plot_cnmf_distance_usages(adata, sample_name, **kwargs):
     from exprmat.plotting.cnmf import cnmf_distance_usages
     return cnmf_distance_usages(adata, **kwargs)
+
+
+def rna_plot_cnmf_distance_modules(adata, sample_name, **kwargs):
+    from exprmat.plotting.cnmf import cnmf_distance_modules
+    return cnmf_distance_modules(adata, **kwargs)
 
 
 def atac_plot_qc(adata, sample_name, **kwargs):

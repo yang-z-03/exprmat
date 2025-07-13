@@ -12,12 +12,22 @@ class metadata:
     ----------
 
     locations : list[str]
-        File system paths indicating directories where the 10x-like matrix files locate. The 
-        file reading scheme is default to 10x matrix files including ``matrix.mtx``, 
-        ``barcodes.tsv`` and ``features.tsv``. Appropriate compression levels and column 
-        information is guessed from file extensions and content columns of ``features.tsv`` 
-        (or ``genes.tsv``).
+        File system paths indicating directories where the data files locate.
+        The protocols and procedures on how to load the dump files in the directory is 
+        determined by `modality` and what this `location` points to. For example, 
+        when `modality` is `rna`, the program will search for 10X-compatible mtx and 
+        tsv files if a folder is provided, or h5ad/h5 files if files are specified directly.
     
+    modality : list[str]
+        What modality is in the location. Supported values are:
+        - `rna` (Single cell RNA-seq),
+        - `rna.splicing` (Supplementary spliced/unspliced counts in loom or mtx)
+        - `rna.tcr` (10X 5' TCR annotations),
+        - `atac` (Single cell ATAC-seq)
+
+    default_taxa : list[str]
+        The reference taxa of the sample.
+
     names : list[str] | None
         Sample names in the loaded experiment. If left to None, names of the folder will be 
         used. Since the folder names may duplicate, this is not forced to be unique. This might 
@@ -28,6 +38,7 @@ class metadata:
     
     groups : list[str] | None
         Experimental groupings, if not set, this column is set to uniform value '.'.
+
     
     Notes
     -----------
@@ -37,6 +48,8 @@ class metadata:
     modality, ``taxa`` for default taxa where no prefix in features is specified. other metadata 
     information is not necessary, and can be appended as specified by user, but do not set duplicate
     column names as these six.
+
+    You may load a TSV table as metadata using :py:func:`load_metadata`.
     """
 
     def __init__(
@@ -173,7 +186,7 @@ class metadata:
 
     def set_if_ends(self, key = 'sample', dest = 'group', ends = '.', value = '.'):
         '''
-        Alter the content of a column if starting with a string in the key column.
+        Alter the content of a column if ending with a string in the key column.
 
         Parameters
         ----------
@@ -200,7 +213,7 @@ class metadata:
 
     def set_if_contains(self, key = 'sample', dest = 'group', contains = '.', value = '.'):
         '''
-        Alter the content of a column if starting with a string in the key column.
+        Alter the content of a column if containing a string in the key column.
 
         Parameters
         ----------
@@ -212,7 +225,7 @@ class metadata:
             The column you may want to alter value according to the patterns in column ``key``, 
             according to the conditions given.
         
-        ends : str
+        contains : str
             Test if values is contained in the ``key``. This requires that both variables be string.
         
         value : str

@@ -58,10 +58,10 @@ def barplot(
         grid_color = 'lightgray'
     )
             
-    axes.legend().remove()
+    axes.legend(bbox_to_anchor = (1.2, 1), loc = 'upper left', borderaxespad = 0, frameon = False)
     axes.set_xlabel('')
     axes.set_ylabel(gene)
-    axes.set_xticks(selected_groups)
+    # axes.set_xticks(selected_groups)
     axes.set_yticks([0.0, 2.5])
 
     # axes.set_xticklabels(selected_groups, rotation = 45)
@@ -80,7 +80,7 @@ def barplot(
                 xtl += [ct + '\n{:.3f}'.format(w.pvalue)]
             else: xtl += [ct]
         
-        axes.set_xticks(selected_groups)
+        # axes.set_xticks(selected_groups)
         axes.set_xticklabels(xtl, rotation = 45)
     
     else:
@@ -123,6 +123,7 @@ def compare_scatter(
 
     plt.xlabel(f'Average expression in {group_x}')
     plt.ylabel(f'Average expression in {group_y}')
+    plt.plot([0, mean_x.max()], [0, mean_x.max()], linewidth = 1, linestyle = '--', color = 'red')
 
     for x, y, name in zip(mean_x, mean_y, varn):
         if name in markers:

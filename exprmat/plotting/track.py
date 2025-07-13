@@ -83,7 +83,7 @@ def initialize_tracks(
                 fmtstring = 'Gb'
 
             xticklabels = [
-                str(x * scaler)
+                str(x * scaler).replace('.0', '')
                 for x in range(xticksfrom, xticksto + 1)]
             xticklabels[-1] = xticklabels[-1] + ' ' + fmtstring
             lastax.set_xticklabels(xticklabels)
@@ -255,8 +255,12 @@ def gene_track(
             if show_gene_name:
                 ens = gtable['ensembl'].tolist()
                 dname = gtable['gene'].tolist()
-                if name in ens: displayname = dname[ens.index(name)]
+                if name in ens: displayname = dname[ens.index(name)] \
+                    if str(ens.index(name)) != 'nan' else name
             
+            if displayname == 'nan':
+                displayname = ''
+                
             ntranscript = len(gene[gene['type'] == 'transcript'])
             if ntranscript > 1: displayname += f' ({ntranscript})'
             text = ax.text(max(requested_x, xfrom), requested_y + 0.25, displayname, verticalalignment = 'center')
@@ -435,6 +439,30 @@ def coverage_track_from_bam(
     return coverage_track(ax, xfrom, xto, xticks, depth[['x', 'y']], color, xlabel, ylabel, show_x_axis)
 
 
+def coverage_track_from_bigwig(
+    ax, bigwig, xfrom, xto, chrm, xticks, ncpus = 4,
+    color = 'blue', xlabel = None, ylabel = None, show_x_axis = True
+):
+    '''
+    Examples
+    --------
+    >>> coverage_track_from_bam(
+    >>>     axes[3], './fc.bigwig', 
+    >>>     xfrom, xto, chr_bam, xticks, ncpus = 4, xlabel = None, ylabel = 'WT', 
+    >>>     show_x_axis = True
+    >>> )
+    '''
+    import pyBigWig
+    from exprmat.ansi import error, warning
+    import os
+    import pandas
+
+    bw = pyBigWig.open(bigwig)
+    if not bw.chroms(chrm): error(f'specified chromosome {chrm} do not exist in the bigwig file.')
+    depth = pandas.DataFrame({'x': [x for x in range(xfrom, xto)], 'y': bw.values(chrm, xfrom, xto)})
+    return coverage_track(ax, xfrom, xto, xticks, depth[['x', 'y']], color, xlabel, ylabel, show_x_axis)
+
+
 def architecture(assembly, figsize = (4, 8), dpi = 100, cby = 'assembly'):
     '''
     Examples
@@ -537,4 +565,26 @@ def genes(
         from exprmat.ansi import error
         error('must specify a range or a gene name flanking.')
         return None
+    
+
+def whereis(assembly, where, upstream = 10000, downstream = 10000):
+
+    from exprmat.configuration import default as cfg
+    from exprmat.data.finders import get_genome
+
+    gtable = get_genome(cfg['taxa.reference'][assembly.lower()])
+    ens = gtable['ensembl'].tolist()
+    name = gtable['gene'].tolist()
+
+    if where in ens:
+        geneattr = gtable.iloc[ens.index(where), :].copy()
+    elif where in name:
+        geneattr = gtable.iloc[name.index(where), :].copy()
+    else: geneattr = gtable[where, :].copy()
+
+    chr = geneattr['.seqid']
+    xfrom = geneattr['.start'] - upstream
+    xto = geneattr['.end'] + downstream
+
+    return chr, xfrom, xto
     

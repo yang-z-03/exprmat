@@ -1,10 +1,10 @@
 
 import os
 import pandas
+from exprmat import basepath
 from exprmat.ansi import warning, info
 from exprmat.configuration import default as cfg
 
-basepath = cfg['data']
 genome = {}
 
 def refresh_genome():

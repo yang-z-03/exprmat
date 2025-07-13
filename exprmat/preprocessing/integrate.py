@@ -1,6 +1,7 @@
 
 import anndata as ad
 import numpy as np
+from exprmat.utils import choose_layer
 from exprmat.ansi import error, warning
 
 
@@ -148,6 +149,8 @@ def harmony(
     *,
     basis: str = "pca",
     adjusted_basis: str = "harmony",
+    transform_data = False,
+    data_slot = 'X',
     **kwargs,
 ):
     """
@@ -220,16 +223,20 @@ def harmony(
     default_params.update(kwargs)
     harmony_out = harmonypy.run_harmony(X, adata.obs, key, **default_params)
     adata.obsm[adjusted_basis] = harmony_out.Z_corr.T
-    _, x_corr, _, _ = moe_correct_ridge(
-        X.T, None, None, 
-        harmony_out.R, None, 
-        harmony_out.K, None, 
-        harmony_out.Phi_moe, harmony_out.lamb
-    )
+
+    if transform_data:
+        data = choose_layer(adata, layer = data_slot)
+        _, x_corr, _, _ = moe_correct_ridge(
+            data, None, None, 
+            harmony_out.R, None, 
+            harmony_out.K, None, 
+            harmony_out.Phi_moe, harmony_out.lamb
+        )
     
-    x_corr = np.array(x_corr.T)
-    x_corr[x_corr < 0] = 0
-    adata.layers[adjusted_basis] = x_corr
+        x_corr = np.array(x_corr.T)
+        x_corr[x_corr < 0] = 0
+        adata.layers[adjusted_basis] = x_corr
+        
     return adata
 
 

@@ -100,9 +100,12 @@ def density(
             cat_mask = adata.obs[groupby] == cat
             embed_x = adata.obsm[f"{basis}"][cat_mask, components[0]]
             embed_y = adata.obsm[f"{basis}"][cat_mask, components[1]]
-
-            dens_embed = kde(embed_x, embed_y)
-            density_values[cat_mask] = dens_embed
+            n, = embed_x.shape
+            if n <= 5:
+                density_values[cat_mask] = 1 / n
+            else:
+                dens_embed = kde(embed_x, embed_y)
+                density_values[cat_mask] = dens_embed
 
         adata.obs[density_covariate] = density_values
 

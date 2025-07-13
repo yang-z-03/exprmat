@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.abspath("."))
 sys.path.insert(0, os.path.abspath("../.."))
 
 project = 'exprmat'
-copyright = '2025, (c) Zheng Yang'
+copyright = '2025 (c) Zheng Yang'
 author = 'Zheng Yang'
-release = '0.1.0'
+release = '0.1.30'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -27,6 +27,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.napoleon',
+    # 'nbsphinx'
 ]
 
 templates_path = ['_templates']
@@ -43,6 +44,11 @@ intersphinx_mapping = {
 intersphinx_disabled_domains = ['std']
 
 templates_path = ['_templates']
-html_theme = "sphinx_rtd_theme"
-import sphinx_rtd_theme
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+
+# html_theme = "sphinx_rtd_theme"
+# import sphinx_rtd_theme
+# html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+
+html_permalinks_icon = '<span>#</span>'
+html_theme = 'sphinxawesome_theme'
+highlight_language = 'python3'

@@ -10,15 +10,10 @@ import anndata as ad
 import scanpy as sc
 import pathlib
 
-# core method exports
-from exprmat.utils import setup_styles
-from exprmat.reader.experiment import experiment, load_experiment
-from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.configuration import default as config
 from exprmat.ansi import warning, info
 
 mu.set_options(pull_on_update = False)
-setup_styles()
 
 
 DATABASE_SETUP_MESSAGE = """
@@ -44,11 +39,22 @@ default_finders = [
 
 for finder in default_finders:
     if os.path.exists(finder):
-        info(f'load configuration from {finder}.')
+        info(f'load configuration from {finder}')
         with open(finder, 'r') as f:
             import json
             workspace_config = json.load(f)
             config.update(workspace_config)
+            break
+
+basepath = config['data']
+
+# core method exports
+from exprmat.utils import setup_styles
+from exprmat.reader.experiment import experiment, load_experiment
+from exprmat.reader.metadata import metadata, load_metadata
+
+setup_styles()
+
 
 def version_db():
     dbpath = config['data']
@@ -61,6 +67,7 @@ def version_db():
             db_ver = vf.read().strip()
     
     return db_ver
+
 
 # perform database integrity check.
 if PERFORM_DATABASE_CHECK:
