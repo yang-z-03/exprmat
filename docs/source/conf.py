@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = 'exprmat'
 copyright = '2025 (c) Zheng Yang'
 author = 'Zheng Yang'
-release = '0.1.30'
+release = '0.1.31'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -27,6 +27,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.napoleon',
+    'sphinx_design'
     # 'nbsphinx'
 ]
 
@@ -37,6 +38,8 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_static_path = ['_static']
+html_css_files = ["./page.css", "../page.css"]
+
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),

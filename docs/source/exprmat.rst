@@ -13,14 +13,12 @@ exprmat 主模块
 
 .. py:class:: experiment
 
-    See :py:class:`exprmat.reader.experiment.experiment` and 
-    :py:func:`exprmat.reader.experiment.load_experiment`
+    See :py:class:`exprmat.experiment` and :py:func:`exprmat.load_experiment`
 
 
 .. py:class:: metadata
 
-    See :py:class:`exprmat.reader.metadata.metadata` and 
-    :py:func:`exprmat.reader.metadata.load_metadata`
+    See :py:class:`exprmat.metadata` and :py:func:`exprmat.load_metadata`
 
 
 实用函数

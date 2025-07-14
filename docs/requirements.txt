@@ -5,3 +5,4 @@ anndata
 mudata
 pandas
 scanpy
+sphinx_design
