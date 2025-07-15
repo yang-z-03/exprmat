@@ -2,6 +2,7 @@
 import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def linregress(
@@ -253,4 +254,59 @@ def density(
         axis.set_yticks([yscale(z) for z in yticks])
         if yticklabels: axis.set_yticklabels(yticklabels)
     
+    return fig
+
+
+def waterfall(
+    df: pd.DataFrame, name = 'name', resolution = 'resolution', ax = None,
+    figsize = (3, 3), dpi = 100, ylabel = None
+):
+    if ax is not None: fig, ax = ax.figure, ax
+    else: fig, ax = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+
+    # sort descending
+    df = df.sort_values([resolution], ascending = False)
+    maximal = 0
+    minimal = 0
+
+    series = df[resolution]
+
+    if (series > 1).sum() > 0: maximal = series.max()
+    elif (series > 0.5).sum() > 0: maximal = 0.8
+    elif (series > 0.3).sum() > 0: maximal = 0.5
+    elif (series > 0).sum() > 0: maximal = 0.3
+    else: maximal = 0
+
+    if (series < 0.8).sum() > 0: minimal = -1
+    elif (series < 0.5).sum() > 0: maximal = -0.8
+    elif (series < 0.3).sum() > 0: maximal = -0.5
+    elif (series < 0).sum() > 0: maximal = -0.3
+    else: minimal = 0
+
+    ticks = [-1, -0.8, -0.5, -0.3, 0, 0.3, 0.5, 0.8, 1, max(1.1, series.max())]
+    ticks = [x for x in ticks if x >= minimal and x <= maximal]
+    hlines = [-0.5, -0.3, 0, 0.3]
+    hlines = [x for x in hlines if x >= minimal and x <= maximal]
+
+    ax.set_xlim(0, len(series))
+    ax.set_ylim(minimal, maximal)
+    ax.set_xticks([])
+    ax.set_yticks(ticks)
+    ax.set_yticklabels([f'{x * 100:.0f}%' for x in ticks])
+    if ylabel: ax.set_ylabel(ylabel)
+
+    for i, val in enumerate(series):
+        color = 'orange'
+        if val > 0.3: color = 'red'
+        elif val < -0.99: color = 'dodgerblue'
+        elif val < -0.3: color = 'gold'
+        ax.fill_between([i + 0.2, i + 0.8], [0, 0], [val, val], color = color)
+    
+    for hl in hlines:
+        ax.hlines(hl, 0, len(series), linestyles = '--', colors = 'red', lw = 1)
+    ax.hlines(0, 0, len(series), linestyles = '-', colors = 'black', lw = 1)
+
+    for pos in ['right', 'top', 'bottom']:
+        ax.spines[pos].set_visible(False)
+
     return fig

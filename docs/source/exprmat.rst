@@ -60,3 +60,8 @@ exprmat 主模块
 .. py:function:: locate_data(path: str = '.')
 
     Set the database folder directly.
+
+开始使用 exprmat 程序包
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+你接下来可以阅读以下文档，这些教程简要地介绍了程序包的基本工作流程

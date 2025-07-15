@@ -38,7 +38,7 @@ exclude_patterns = []
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_static_path = ['_static']
-html_css_files = ["./page.css", "../page.css"]
+html_css_files = ["page.css"]
 
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
