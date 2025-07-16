@@ -81,7 +81,8 @@ def filter_by(liana_res, filter_fun):
     if filter_fun is not None:
         msk = filter_fun(liana_res).astype(bool)
         relevant_interactions = np.unique(liana_res[msk].interaction)
-        liana_res = liana_res[np.isin(liana_res['interaction'], relevant_interactions)]
+        # liana_res = liana_res[np.isin(liana_res['interaction'], relevant_interactions)]
+        liana_res = liana_res[msk]
 
     return liana_res
 
@@ -124,6 +125,7 @@ def pivot_lr(
     
     if mode not in ['counts', 'mean']:
         error("`pivot_mode` must be 'counts' or 'mean'.")
+
     if mode == 'counts':
         pivot_table = liana_res.pivot_table(
             index = source_key, columns = target_key, 
@@ -136,7 +138,7 @@ def pivot_lr(
             values = score_key, aggfunc = 'mean', fill_value = 0
         )
 
-    return pivot_table
+    return pivot_table.loc[pivot_table.columns, :]
 
 
 def scale(arr, min_val = 1, max_val = 5):
@@ -163,15 +165,17 @@ def set_color(adata, label, color_dict = None, hex = True):
             color_dict[x] for x in adata.obs[label].cat.categories
         ]
 
-    elif f"{label}.colors" not in adata.uns:
+    elif f"{label}.colors" not in adata.uns.keys():
         sc.pl._utils._set_default_colors_for_categorical_obs(adata, label)
+        adata.uns[f"{label}.colors"] = adata.uns[f"{label}_colors"]
+        del adata.uns[f"{label}_colors"]
 
     return adata
 
 
 def get_color(adata, label):
 
-    if f"{label}.colors" not in adata.uns: set_color(adata, label)
+    if f"{label}.colors" not in adata.uns.keys(): set_color(adata, label)
     return { 
         x: y for x, y in zip(
             adata.obs[label].cat.categories, 

@@ -18,7 +18,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.31"
+version = "0.1.32"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -68,7 +68,6 @@ dependencies = [
     'sh',
     'networkx',
     'palantir',
-    'scfates',
     'rich',
     'adjustText',
     'h5py',

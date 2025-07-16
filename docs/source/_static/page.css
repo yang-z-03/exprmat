@@ -9,6 +9,12 @@
     }
 }
 
-div.sd-summary-content > p.sd-card-text {
+div.sd-summary-content > p.sd-card-text,
+dd > p,
+div.admonition > p {
     line-height: 1.75em;
+}
+
+.dark {
+    scrollbar-color: #444 #111 !important;
 }

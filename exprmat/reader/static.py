@@ -815,13 +815,14 @@ def rna_plot_markers(adata, sample_name, figsize, dpi, **kwargs):
 
 def rna_plot_expression_bar(
     adata, sample_name, gene, group, split = None,
-    slot = 'X', selected_groups = None, palette = ['red', 'black'], 
+    slot = 'X', selected_groups = None, selected_splits = None, palette = ['red', 'black'], 
     figsize = (6,3), dpi = 100
 ):
     from exprmat.plotting.expression import barplot
     pl = barplot(
         adata, gene = gene, slot = slot, group = group,
-        split = split, selected_groups = selected_groups, palette = palette,
+        split = split, selected_groups = selected_groups, 
+        selected_splits = selected_splits, palette = palette,
         size = figsize, dpi = dpi
     )
     return pl

@@ -8,13 +8,13 @@ from exprmat.utils import find_variable, choose_layer
 
 def barplot(
     adata, *, gene, 
-    slot = 'X', group = 'cell.type', selected_groups = None, 
+    slot = 'X', group = 'cell.type', selected_groups = None, selected_splits = None,
     split = 'treat', palette = ['red', 'black'], ax = None,
     size = (6,3), dpi = 100
 ):
     
-    plt.rcParams["ytick.labelright"] = True
-    plt.rcParams["ytick.labelleft"] = False
+    plt.rcParams["ytick.labelright"] = False
+    plt.rcParams["ytick.labelleft"] = True
     
     colnames = ['logc' + x for x in [gene]]
     cellnames = ['c' + str(i) for i in range(len(adata.obs_names.tolist()))]
@@ -36,6 +36,13 @@ def barplot(
     dropzeros['selected.celltype'] = select_ct
     dropzeros = dropzeros.loc[dropzeros['selected.celltype'],:]
 
+    if selected_splits is None:
+        if split is not None: selected_splits = adata.obs[split].value_counts().index.tolist()
+        else: selected_splits = ['default.split']
+
+    select_sp = [x in selected_splits for x in dropzeros['split'].tolist()]
+    dropzeros = dropzeros.loc[select_sp,:]
+
     if ax is None: fig, axes = plt.subplots(1, 1, figsize = size, dpi = dpi)
     else: axes = ax
 
@@ -49,7 +56,7 @@ def barplot(
     )
     
     axes.tick_params(
-        axis = 'y', right = True, left = False, color = 'gray', length = 4,
+        axis = 'y', right = False, left = True, color = 'gray', length = 4,
         grid_color = 'none'
     )
         
@@ -58,7 +65,7 @@ def barplot(
         grid_color = 'lightgray'
     )
             
-    axes.legend(bbox_to_anchor = (1.2, 1), loc = 'upper left', borderaxespad = 0, frameon = False)
+    axes.legend(bbox_to_anchor = (1, 1), loc = 'upper left', borderaxespad = 0, frameon = False)
     axes.set_xlabel('')
     axes.set_ylabel(gene)
     # axes.set_xticks(selected_groups)
@@ -93,7 +100,7 @@ def barplot(
         axes.set_xticklabels([xtl], rotation = 45)
         pass
 
-    axes.spines[['left', 'top']].set_visible(False)
+    axes.spines[['right', 'top']].set_visible(False)
     axes.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:.1f}"))
 
     if ax is None: return fig

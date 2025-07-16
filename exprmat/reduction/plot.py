@@ -655,7 +655,7 @@ def gene_gene(
     from exprmat.utils import find_variable as find_var
     gx = find_var(adata, gene_name = gene_x, layer = layer)
     gy = find_var(adata, gene_name = gene_y, layer = layer)
-    labels = find_var(color) if color is not None else ['.'] * len(gx)
+    labels = find_var(adata, color) if color is not None else ['.'] * len(gx)
 
     df = pd.DataFrame({
         'x': gx,
@@ -749,7 +749,7 @@ def gene_gene(
             )
 
         if legend:
-            assert len(adata.uns[f'{color}.colors']) == len(hue_order)
+            assert len(adata.uns[f'{color}.colors']) >= len(hue_order)
             dummy_objects = []
             legend_artists = {}
             for legend_t, legend_c, legend_id in zip(

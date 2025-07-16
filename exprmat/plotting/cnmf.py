@@ -1,6 +1,7 @@
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 
 def cnmf_silhoutte(adata, nmf_slot = 'cnmf', figsize = (3, 2), dpi = 100):
@@ -64,7 +65,11 @@ def cnmf_distance_usages(
     from exprmat.clustering.seriation import serial_matrix, squareform
     serial, order, _ = serial_matrix(squareform(pdistc), method = method)
     indices = adata.obs.iloc[subset, :].iloc[order, :].index.tolist()
-    if annotations: annotations = adata.obs.iloc[subset, :].iloc[order, :][annotations].tolist()
+    if annotations:
+        if annotations in adata.obs.columns: 
+            annotations = adata.obs.iloc[subset, :].iloc[order, :][annotations].tolist()
+        elif annotations in adata.obsm.keys(): 
+            annotations = adata[subset, :][order, :].obsm[annotations]
 
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
@@ -90,7 +95,11 @@ def cnmf_distance_modules(
     from exprmat.clustering.seriation import serial_matrix, squareform
     serial, order, _ = serial_matrix(squareform(pdistc), method = method)
     indices = adata.var.iloc[subset, :].iloc[order, :].index.tolist()
-    if annotations: annotations = adata.var.iloc[subset, :].iloc[order, :][annotations].tolist()
+    if annotations: 
+        if annotations in adata.var.columns: 
+            annotations = adata.var.iloc[subset, :].iloc[order, :][annotations].tolist()
+        elif annotations in adata.varm.keys(): 
+            annotations = adata[subset, :][order, :].varm[annotations]
 
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
@@ -114,7 +123,8 @@ def matrix_plot(
         ax.set_yticklabels(labels)
         ax.set_xticks([])
 
-    if annotations is not None:
+    # categorical annotations
+    if annotations is not None and isinstance(annotations, list):
         ax_annot = ax.inset_axes([1.02, 0, 0.05, 1], sharey = ax)
         annot_u = list(set(annotations))
         annot_n = [annot_u.index(x) for x in annotations]
@@ -150,5 +160,30 @@ def matrix_plot(
             borderaxespad = 0, frameon = False,
             ncol = legend_cols
         )
+    
+    # numerical annotations (from obsm or varm)
+    elif annotations is not None and (
+        isinstance(annotations, np.ndarray) or
+        isinstance(annotations, np.matrix) or
+        isinstance(annotations, pd.DataFrame)
+    ):
+        xn = None
+        if isinstance(annotations, pd.DataFrame):
+            xn = annotations.columns.tolist()
+            annotations = annotations.values
+
+        ncol = annotations.shape[1]
+        ax_annot = ax.inset_axes([1.05, 0, max(0.3, 0.07 * ncol), 1], sharey = ax)
+        
+        ax_annot.imshow(annotations, cmap = cmap_annotations, aspect = 'auto', interpolation = 'nearest')
+        # ax_annot.set_yticks([])
+        if xn: 
+            ax_annot.set_xticks([x for x in range(len(xn))])
+            ax_annot.set_xticklabels(xn, rotation = 90)
+        else:
+            ax_annot.set_xticks([0])
+            ax_annot.set_xticklabels([''])
+
+        ax_annot.tick_params(axis = "y", labelleft = False, length = 0)
     
     return fig

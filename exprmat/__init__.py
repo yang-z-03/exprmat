@@ -8,6 +8,7 @@ import importlib.metadata
 import mudata as mu
 import anndata as ad
 import scanpy as sc
+import pandas as pd
 import pathlib
 
 from exprmat.configuration import default as config
