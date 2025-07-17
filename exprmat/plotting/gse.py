@@ -510,7 +510,7 @@ class dotplot(object):
         figsize: Tuple[float, float] = (6, 5.5),
         cmap: str = 'turbo',
         marker: str = "o",
-        formatter = None,
+        formatter = lambda x: x,
         ** kwargs,
     ):
         
@@ -827,7 +827,7 @@ def gsea_dotplot(
     yticklabels_rot: Optional[float] = None,
     marker: str = "o",
     show_ring: bool = False,
-    formatter = None,
+    formatter = lambda x: x,
     **kwargs,
 ):
     
@@ -885,7 +885,7 @@ def opa_dotplot(
     yticklabels_rot: Optional[float] = None,
     marker: str = "o",
     show_ring: bool = False,
-    formatter = None,
+    formatter = lambda x: x,
     **kwargs,
 ):
     

@@ -1231,7 +1231,7 @@ def rna_plot_gsea_running_es(
 def rna_plot_gsea_dotplot(
     adata, sample_name, gsea_key, max_fdr = 1, max_p = 0.05, top_term: int = 100,
     colour = 'p', title = "", cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5,
-    terms = None, formatter = None
+    terms = None, formatter = lambda x: x
 ):
     from exprmat.plotting.gse import gsea_dotplot
     return gsea_dotplot(
@@ -1245,7 +1245,7 @@ def rna_plot_gsea_dotplot(
 def rna_plot_opa_dotplot(
     adata, sample_name, opa_key, max_fdr = 1, max_p = 0.05, top_term: int = 100, terms = None,
     colour = 'fdr', title = None, cmap = 'turbo', figsize = (3, 2), cutoff = 1, ptsize = 5,
-    formatter = None
+    formatter = lambda x: x
 ):
     from exprmat.plotting.gse import opa_dotplot
     return opa_dotplot(

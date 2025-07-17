@@ -171,14 +171,14 @@ def volcano(
     import numpy as np
     import matplotlib.pyplot as plt
     from adjustText import adjust_text
-    from exprmat.reader.experiment import experiment
+    import exprmat.reader.static as st
 
     pvals = []
     fc = []
     names = []
 
     if isinstance(de_slot, str):
-        plots = experiment.rna_get_markers(
+        plots = st.rna_get_markers(
             adata, de_slot = de_slot,
             min_pct = min_pct, max_pct_reference = max_pct_reference, 
             min_lfc = min_lfc, max_lfc = max_lfc, 

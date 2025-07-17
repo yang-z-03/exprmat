@@ -10,7 +10,7 @@
 }
 
 div.sd-summary-content > p.sd-card-text,
-dd > p,
+dd > p, li > p,
 div.admonition > p {
     line-height: 1.75em;
 }

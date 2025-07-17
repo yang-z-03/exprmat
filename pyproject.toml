@@ -18,7 +18,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.32"
+version = "0.1.33"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -81,15 +81,22 @@ dependencies = [
     'graphtools',
     'bincsync >= 0.3.0',
     'pyBigWig',
-    'loompy'
+    'loompy',
+    'squidpy',
+    'zarr',
+    'spatialdata-io',
+    'scikit-image',
+    'spatial-image',
+    'multiscale-spatial-image',
+    'tangram-sc'
 ]
 
 [project.optional-dependencies]
 dev = [
     'sphinx',
-    'sphinx-rtd-theme',
     'twine',
-    'ipykernel'
+    'ipykernel',
+    'ipytree'
 ]
 
 [project.urls]
