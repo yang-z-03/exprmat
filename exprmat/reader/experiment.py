@@ -161,6 +161,59 @@ class experiment:
                     os.path.join(self.directory, 'tcr', i_sample + '.tsv.gz'), 
                     sep = '\t', index = False
                 )
+
+            elif i_mod == 'rnasp-c':
+                
+                if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
+
+                from exprmat.reader.spatial import read_seekspace, read_xenium_explorer, is_xenium_explorer
+                
+                if is_xenium_explorer(i_loc):
+                    self.modalities['rnasp-c'][i_sample] = read_xenium_explorer(
+                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
+                    )
+                
+                else:
+                    self.modalities['rnasp-c'][i_sample] = read_seekspace(
+                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
+                    )
+
+                self.modalities['rnasp-c'][i_sample].var = \
+                    st.search_genes(self.modalities['rnasp-c'][i_sample].var_names.tolist())
+                
+            elif i_mod == 'rnasp-b':
+                
+                if not 'rnasp-b' in self.modalities.keys(): self.modalities['rnasp-b'] = {}
+
+                from exprmat.reader.spatial import read_visium
+                self.modalities['rnasp-b'][i_sample] = read_visium(
+                    src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                    raw = False, default_taxa = i_taxa, eccentric = eccentric
+                )
+
+                self.modalities['rnasp-b'][i_sample].var = \
+                    st.search_genes(self.modalities['rnasp-b'][i_sample].var_names.tolist())
+                
+            elif i_mod == 'rnasp-s':
+                
+                if not 'rnasp-s' in self.modalities.keys(): self.modalities['rnasp-s'] = {}
+
+                from exprmat.reader.spatial import read_visium_hd
+                self.modalities['rnasp-s'][i_sample], cellseg = read_visium_hd(
+                    src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                    raw = False, default_taxa = i_taxa, eccentric = eccentric
+                )
+
+                self.modalities['rnasp-s'][i_sample].var = \
+                    st.search_genes(self.modalities['rnasp-s'][i_sample].var_names.tolist())
+                
+                if cellseg is not None:
+                    if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
+                    self.modalities['rnasp-c'][i_sample] = cellseg
+                    self.modalities['rnasp-c'][i_sample].var = \
+                        st.search_genes(self.modalities['rnasp-c'][i_sample].var_names.tolist())
             
             elif i_mod == 'atac':
                 
@@ -412,6 +465,143 @@ class experiment:
 
             pass
 
+        if 'rnasp-c' in self.modalities.keys():
+
+            filtered = {}
+            spatialdict = {}
+
+            for rnak in self.modalities['rnasp-c'].keys():
+
+                # if following the recommended routine, by the time one will need
+                # to merge the datasets, the X slot should contain log normalized values.
+
+                filtered[rnak] = ad.AnnData(
+                    X = self.modalities['rnasp-c'][rnak].X,
+                    obs = self.modalities['rnasp-c'][rnak].obs,
+                    var = self.modalities['rnasp-c'][rnak].var,
+                )
+
+                if 'counts' in self.modalities['rnasp-c'][rnak].layers.keys():
+                    filtered[rnak].layers['counts'] = self.modalities['rnasp-c'][rnak].layers['counts']
+
+                if 'spliced' in self.modalities['rnasp-c'][rnak].layers.keys():
+                    filtered[rnak].layers['spliced'] = self.modalities['rnasp-c'][rnak].layers['spliced']
+
+                if 'unspliced' in self.modalities['rnasp-c'][rnak].layers.keys():
+                    filtered[rnak].layers['unspliced'] = self.modalities['rnasp-c'][rnak].layers['unspliced']
+
+                if 'ambiguous' in self.modalities['rnasp-c'][rnak].layers.keys():
+                    filtered[rnak].layers['ambiguous'] = self.modalities['rnasp-c'][rnak].layers['ambiguous']
+                
+                for obsm in list(set(['spatial'] + obsms)):
+                    filtered[rnak].obsm[obsm] = self.modalities['rnasp-c'][rnak].obsm[obsm]
+
+                for spsample in self.modalities['rnasp-c'][rnak].uns['spatial'].keys():
+                    spatialdict[spsample] = self.modalities['rnasp-c'][rnak].uns['spatial'][spsample]
+
+                if subset_dict is not None:
+                    if rnak not in subset_dict.keys():
+                        del filtered[rnak]
+                    
+                    else:
+                        cell_mask = [
+                            x in subset_dict[rnak] 
+                            for x in filtered[rnak].obs[subset_key].tolist()
+                        ]
+
+                        if not all(cell_mask):
+                            filtered[rnak] = filtered[rnak][cell_mask, :]
+
+
+            # merge rna st.
+            merged['rnasp-c'] = ad.concat(
+                filtered, axis = 'obs', 
+                join = join, label = 'sample'
+            )
+
+            merged['rnasp-c'].uns['spatial'] = spatialdict
+
+            # retrieve the corresponding gene info according to the universal 
+            # nomenclature rna:[tax]:[ugene] format
+
+            gene_names = merged['rnasp-c'].var_names.tolist()
+            merged['rnasp-c'].var = st.search_genes(gene_names)
+
+            # we will next merge variable columns. this is typically designed for
+            # merging bool vector masks for hvgs.
+            
+            for varc in variable_columns:
+                
+                values = {}
+
+                for rnak in self.modalities['rnasp-c'].keys():
+
+                    # just skip samples with explicitly ignored subset.
+                    if subset_dict is not None:
+                        if rnak not in subset_dict.keys():
+                            continue
+
+                    key = self.modalities['rnasp-c'][rnak].var.index.tolist()
+                    if not varc in self.modalities['rnasp-c'][rnak].var.columns.tolist():
+                        warning(f'sample `{rnak}` does not contain variable column `{key}`. skipped.')
+                        continue
+
+                    value = self.modalities['rnasp-c'][rnak].var[varc].tolist()
+                    for idk in range(len(key)):
+                        if key[idk] not in values.keys(): values[key[idk]] = []
+                        values[key[idk]] += [value[idk]]
+                
+                labels = values[list(values.keys())[0]]
+                if type(labels[0]) is str:
+
+                    if string_merge_behavior == 'unique_concat':
+                        f = lambda l: string_merge_sep.join(list(set(l)))
+                    elif string_merge_behavior == 'concat':
+                        f = lambda l: string_merge_sep.join(l)
+                    else: f = lambda l: 'NA'
+
+                    merged_var = [f(values[g]) if g in values.keys() else 'NA' for g in gene_names]
+                    merged['rna'].var[varc] = merged_var
+
+                elif (type(labels[0]) is int) or \
+                     (type(labels[0]) is float) or \
+                     (type(labels[0]) is np.float32) or \
+                     (type(labels[0]) is np.float64) or \
+                     (type(labels[0]) is np.int32):
+
+                    if numeric_merge_behavior == 'mean':
+                        f = lambda l: np.mean(l)
+                    elif string_merge_behavior == 'var':
+                        f = lambda l: np.var(l)
+                    elif string_merge_behavior == 'sd':
+                        f = lambda l: np.std(l)
+                    elif string_merge_behavior == 'max':
+                        f = lambda l: np.max(l)
+                    elif string_merge_behavior == 'min':
+                        f = lambda l: np.min(l)
+                    elif string_merge_behavior == 'median':
+                        f = lambda l: np.median(l)
+                    else: f = lambda l: float('nan')
+
+                    merged_var = [f(values[g]) if g in values.keys() else float('nan') for g in gene_names]
+                    merged['rnasp-c'].var[varc] = merged_var
+                
+                elif type(labels[0]) is bool:
+
+                    if bool_merge_behavior == 'and':
+                        f = lambda l: all(l)
+                    elif bool_merge_behavior == 'or':
+                        f = lambda l: any(l)
+                    else: f = lambda l: False
+
+                    merged_var = [f(values[g]) if g in values.keys() else False for g in gene_names]
+                    merged['rnasp-c'].var[varc] = merged_var
+
+                else: warning(f'`{key}` with unsupported type. skipped.')
+                pass
+
+            pass # merging 'rna'.
+
 
         if len(merged) > 0:
             mdata = mu.MuData(merged)
@@ -420,7 +610,7 @@ class experiment:
         else: self.mudata = None
 
 
-    def do_for(self, samples, func, **kwargs):
+    def do_for(self, modality, samples, func, **kwargs):
         
         results = {}
         for mod, samp in zip(
@@ -428,6 +618,7 @@ class experiment:
             self.metadata.dataframe['sample'].tolist()
         ):
             if '.' in mod: continue
+            if mod != modality: continue
 
             do = False
             if samples is None: do = True
@@ -449,18 +640,22 @@ class experiment:
                     warning(f'{samp} not loaded in the {mod} modality.')
                     continue
                 
-                if True:
-                    results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
+                # try: results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
                 # except: warning(f'method failed for sample {samp}')
+                results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
         
         return results
 
 
     def do_for_modality(self, modality, run_on_samples, func, **kwargs):
         if isinstance(run_on_samples, bool) and run_on_samples:
-            return self.do_for(self.all_samples(modality), func, **kwargs)
+            return self.do_for(modality, self.all_samples(modality), func, **kwargs)
         elif isinstance(run_on_samples, list):
-            return self.do_for(list(set(self.all_samples(modality)) & set(run_on_samples)), func, **kwargs)
+            return self.do_for(
+                modality, list(set(self.all_samples(modality)) & set(run_on_samples)), 
+                func, **kwargs
+            )
+        
         else:
             assert modality in self.mudata.mod.keys()
             return func(self.mudata[modality], 'integrated', **kwargs)
@@ -476,6 +671,12 @@ class experiment:
     
     def do_for_atac_gene_activity(self, run_on_samples, func, **kwargs):
         return self.do_for_modality('atac.g', run_on_samples, func, **kwargs)
+    
+    def do_for_rnaspc(self, run_on_samples, func, **kwargs):
+        return self.do_for_modality('rnasp-c', run_on_samples, func, **kwargs)
+    
+    def do_for_rnaspb(self, run_on_samples, func, **kwargs):
+        return self.do_for_modality('rnasp-b', run_on_samples, func, **kwargs)
         
     
     def plot_for_modality(
@@ -486,12 +687,16 @@ class experiment:
         setup_styles()
 
         if isinstance(run_on_samples, bool) and run_on_samples:
-            figures = self.do_for(self.all_samples(modality), func, **kwargs)
+            figures = self.do_for(modality, self.all_samples(modality), func, **kwargs)
             for f in figures.values(): f.tight_layout()
             return figures
         
         elif isinstance(run_on_samples, list):
-            figures = self.do_for(list(set(self.all_samples(modality)) & set(run_on_samples)), func, **kwargs)
+            figures = self.do_for(
+                modality, list(set(self.all_samples(modality)) & set(run_on_samples)), 
+                func, **kwargs
+            )
+            
             for f in figures.values(): f.tight_layout()
             return figures
         
@@ -563,6 +768,24 @@ class experiment:
     ):
         return self.plot_for_modality(
             'atac.g', run_on_samples, func, 
+            run_on_splits, split_key, split_selection, **kwargs
+        )
+    
+    def plot_for_rnaspc(
+        self, run_on_samples, func,
+        run_on_splits = False, split_key = None, split_selection = None, **kwargs
+    ):
+        return self.plot_for_modality(
+            'rnasp-c', run_on_samples, func, 
+            run_on_splits, split_key, split_selection, **kwargs
+        )
+    
+    def plot_for_rnaspb(
+        self, run_on_samples, func,
+        run_on_splits = False, split_key = None, split_selection = None, **kwargs
+    ):
+        return self.plot_for_modality(
+            'rnasp-b', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
 
@@ -1095,6 +1318,113 @@ class experiment:
         self.do_for_atac_gene_activity(run_on_samples, st.rna_impute_magic, **kwargs) 
 
 
+    
+    def run_rnaspc_qc(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_qc, **kwargs)
+        
+    def run_rnaspc_filter(self, run_on_samples = False):
+        results = self.do_for_rnaspc(run_on_samples, st.rna_filter)
+        self.modalities['rnasp-c'] = results
+
+    def run_rnaspc_log_normalize(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_log_normalize, **kwargs)
+
+    def run_rnaspc_select_hvg(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_select_hvg, **kwargs)
+
+    def run_rnaspc_scale_pca(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_scale_pca, **kwargs)
+
+    def run_rnaspc_knn(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_knn, **kwargs)
+
+    def run_rnaspc_leiden(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_leiden, **kwargs)
+
+    def run_rnaspc_leiden_subcluster(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_leiden_subcluster, **kwargs)
+
+    def run_rnaspc_umap(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_umap, **kwargs)
+
+    def run_rnaspc_mde(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_mde, **kwargs)
+
+    def run_rnaspc_mde_fit(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_mde_fit, **kwargs)
+
+    def run_rnaspc_transform(self, run_on_samples = False, xfunc = lambda x:x, yfunc = lambda x:x):
+        self.do_for_rnaspc(run_on_samples, st.rnaspc_transform, xfunc = xfunc, yfunc = yfunc)
+
+
+    def run_rnaspc_expression_mask(
+        self, run_on_samples = False, gene = None, key = 'mask', 
+        lognorm = 'X', threshold = 0.1, negate = False
+    ):
+        return self.do_for_rnaspc(
+            run_on_samples, st.rna_expression_mask, 
+            gene = gene, key = key, lognorm = lognorm, threshold = threshold,
+            negate = negate
+        )
+
+
+    def run_rnaspc_integrate(self, method = 'harmony', dest = 'harmony', **kwargs):
+        
+        self.check_merged('rnasp-c')
+        if method == 'harmony':
+            from exprmat.preprocessing.integrate import harmony
+            harmony(self.mudata['rnasp-c'], key = 'batch', adjusted_basis = dest, **kwargs)
+        
+        elif method == 'scanorama':
+            from exprmat.preprocessing.integrate import scanorama
+            scanorama(self.mudata['rnasp-c'], key = 'batch', adjusted_basis = dest, **kwargs)
+
+        else: error(f'unsupported integration method `{method}`.')
+
+
+    def run_rnaspc_markers(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_markers, **kwargs)
+
+    def run_rnaspc_kde(self, run_on_samples = False, **kwargs):
+        self.do_for_rnaspc(run_on_samples, st.rna_kde, **kwargs)
+
+    def run_rnaspc_proportion(self, run_on_samples = False, **kwargs):
+        '''
+        This is a simplified method of cell type proportion calculation.
+        It is implemented in earlier versions of the package and can be replaced by a more
+        general version of counting summary. This returns a simple dataframe, while summary
+        returns an annotated object and can be further processed using routines under
+        ``exprmat.clustering.summary`` package.
+        '''
+        return self.do_for_rnaspc(run_on_samples, st.rna_proportion, **kwargs)
+
+    def run_rnaspc_roi(self, run_on_samples = False, **kwargs):
+        
+        roi = self.do_for_rnaspc(run_on_samples, st.rnaspc_roi, **kwargs)
+        if isinstance(roi, dict):
+            roi = roi[kwargs.get('spsample')]
+        
+        roi.uns['spatial'] = {
+            kwargs.get('sample_added'): roi.uns['spatial'][kwargs.get('spsample')]
+        }
+
+        rows = self.metadata.dataframe[(
+            (self.metadata.dataframe['sample'] == kwargs.get('spsample')) &
+            (self.metadata.dataframe['modality'] == 'rnasp-c')
+        )]
+
+        assert len(rows) == 1
+        props = rows.iloc[0].copy()
+        props['sample'] = kwargs.get('sample_added')
+        props['modality'] = 'rnasp-c'
+
+        self.metadata.insert_row(props)
+        if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
+        self.modalities['rnasp-c'][kwargs.get('sample_added')] = roi
+        self.modalities['rnasp-c'][kwargs.get('sample_added')].var = \
+            st.search_genes(self.modalities['rnasp-c'][kwargs.get('sample_added')].var_names.tolist())
+
+
     # plotting wrappers
 
     def plot_rna_qc(self, run_on_samples = False, **kwargs):
@@ -1236,6 +1566,7 @@ class experiment:
     def plot_rna_cnmf_distance_usages(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_cnmf_distance_usages, **kwargs)
     
+
     def plot_atac_qc(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.atac_plot_qc, **kwargs)
     
@@ -1245,6 +1576,24 @@ class experiment:
     def plot_atacg_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac_gene_activity(run_on_samples, st.rna_plot_embedding, **kwargs)
     
+
+    def plot_rnaspc_qc(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rnaspc(run_on_samples, st.rna_plot_qc, **kwargs)
+
+    def plot_rnaspc_embedding(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rnaspc(run_on_samples, st.rna_plot_embedding, **kwargs)
+    
+    def plot_rnaspc_embedding_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rnaspc(run_on_samples, st.rna_plot_multiple_embedding, **kwargs)
+    
+    def plot_rnaspc_embedding_spatial(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rnaspc(run_on_samples, st.rnaspc_plot_embedding_spatial, **kwargs)
+    
+
+    def plot_rnaspb_embedding_spatial(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rnaspb(run_on_samples, st.rnaspc_plot_embedding_spatial, **kwargs)
+    
+
     def plot_sankey(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.adata_plot_sankey, **kwargs)
     
@@ -1419,6 +1768,17 @@ class experiment:
         merge.mudata['rna'].var = st.search_genes(concat_mudata['rna'].var.index)
         return merge
     
+
+    # magic accessors
+
+    def __getitem__(self, key):
+        self.check_merged()
+        if key in self.mudata.mod.keys():
+            return self.mudata[key]
+        else: 
+            warning(f'key must be one of [{", ".join(list(self.mudata.mod.keys()))}]')
+            error(f'no integrated modality named `{key}`.')
+            
 
     def __repr__(self):
 

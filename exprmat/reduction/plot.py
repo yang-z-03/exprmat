@@ -330,7 +330,7 @@ def embedding(
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
     cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
     hue_norm = None, 
-    legend_loc = 'right margin',
+    ticks = False,
     frameon = 'small',
     xlabel = None, ylabel = None
 ):
@@ -516,7 +516,7 @@ def embedding(
          (type(labels[0]) is float) or \
          (type(labels[0]) is np.float32) or \
          (type(labels[0]) is np.float64) or \
-         (type(labels[0]) is np.int):
+         (type(labels[0]) is np.uint32):
         
         cmap = list(palettes.interp_palette(palettes.all_palettes[cmap][
             list(palettes.all_palettes[cmap].keys())[-1]
@@ -541,6 +541,11 @@ def embedding(
             atlas_data['x'] = np.array(atlas_data['x'])[indices]
             atlas_data['y'] = np.array(atlas_data['y'])[indices]
 
+        # if labels is all identical
+        if len(np.unique(labels)) <= 1:
+            palette = None
+            labels = None
+
         sb.scatterplot(
             **atlas_data, s = ptsize,
             alpha = alpha, palette = palette, color = default_color,
@@ -559,8 +564,8 @@ def embedding(
 
     elif frameon == 'small':
         axes.axis('on')
-        axes.set_xticks([])
-        axes.set_yticks([])
+        if not ticks: axes.set_xticks([])
+        if not ticks: axes.set_yticks([])
         axes.spines['left'].set_visible(True)
         axes.spines['bottom'].set_visible(True)
         axes.spines['top'].set_visible(False)
@@ -575,8 +580,8 @@ def embedding(
 
     else:
         axes.axis('on')
-        axes.set_xticks([])
-        axes.set_yticks([])
+        if not ticks: axes.set_xticks([])
+        if not ticks: axes.set_yticks([])
         axes.spines['left'].set_visible(True)
         axes.spines['bottom'].set_visible(True)
         axes.spines['top'].set_visible(True)

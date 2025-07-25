@@ -3,14 +3,16 @@ import seaborn as sns
 from matplotlib import ticker
 import matplotlib.pyplot as plt
 import pandas as pd
+
 from exprmat.utils import find_variable, choose_layer
+from exprmat.ansi import error
 
 
 def barplot(
     adata, *, gene, 
     slot = 'X', group = 'cell.type', selected_groups = None, selected_splits = None,
-    split = 'treat', palette = ['red', 'black'], ax = None,
-    size = (6,3), dpi = 100
+    split = 'treat', palette = ['red', 'black'], ax = None, style = 'box',
+    size = (6,3), dpi = 100, violin_kwargs = {}
 ):
     
     plt.rcParams["ytick.labelright"] = False
@@ -46,14 +48,28 @@ def barplot(
     if ax is None: fig, axes = plt.subplots(1, 1, figsize = size, dpi = dpi)
     else: axes = ax
 
-    sns.boxplot(
-        data = dropzeros.loc[dropzeros['name'] == gene,:],
-        x = "row", y = "logc", hue = 'split', ax = axes, fill = True,
-        palette = palette, saturation = 0.8, log_scale = False,
-        color = '.8', linecolor = '0', order = selected_groups, gap = 0.3,
-        flierprops = dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
-        showfliers = True, width = 0.6
-    )
+    if style == 'box':
+
+        sns.boxplot(
+            data = dropzeros.loc[dropzeros['name'] == gene,:],
+            x = "row", y = "logc", hue = 'split', ax = axes, fill = True,
+            palette = palette, saturation = 0.8, log_scale = False,
+            color = '.8', linecolor = '0', order = selected_groups, gap = 0.3,
+            flierprops = dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
+            showfliers = True, width = 0.6
+        )
+    
+    elif style == 'violin':
+
+        sns.violinplot(
+            data = dropzeros.loc[dropzeros['name'] == gene,:],
+            x = "row", y = "logc", hue = 'split', ax = axes, fill = True,
+            palette = palette, saturation = 0.8, log_scale = False,
+            color = '.8', linecolor = '0', order = selected_groups, gap = 0,
+            width = 0.8, **violin_kwargs
+        )
+    
+    else: error('can only set plot style to `box` or `violin`.')
     
     axes.tick_params(
         axis = 'y', right = False, left = True, color = 'gray', length = 4,
@@ -125,7 +141,8 @@ def compare_scatter(
     sns.scatterplot(
         x = mean_x, y = mean_y, ax = ax, hue = ann,
         hue_order = ['bg', 'annot'], palette = ['gray', 'red'],
-        s = 4, edgecolor = None, legend = False
+        s = 4, edgecolor = None, legend = False,
+        rasterized = True
     )
 
     plt.xlabel(f'Average expression in {group_x}')

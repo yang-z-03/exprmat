@@ -390,6 +390,40 @@ spmatrix_to_mtx <- function(sp, outdir) {
     require(Matrix)
     writeMM(sp, file = paste(outdir, 'matrix.mtx', sep = '/'))
 }
+
+seekspace_to_10x <- function(srat, outdir) {
+    
+    features <- data.frame(
+        ensembl = rownames(srat),
+        gene = rownames(srat),
+        tag = "Gene Expression"
+    )
+
+    write(
+        x = colnames(srat),
+        file = paste(outdir, 'barcodes.tsv', sep = '/')
+    )
+    
+    write.table(
+        x = features,
+        file = paste(outdir, 'features.tsv', sep = '/'),
+        sep = "\t", quote = FALSE, col.names = FALSE, row.names = FALSE
+    )
+
+    spa <- srat @ reductions $ spatial @ cell.embeddings |> as.data.frame()
+    spa $ Cell_Barcode <- rownames(spa)
+    spa <- spa[c('Cell_Barcode', 'spatial_1', 'spatial_2')]
+    colnames(spa) <- c('Cell_Barcode', 'X', 'Y')
+    write.table(
+        x = srat @ reductions $ spatial @ cell.embeddings,
+        file = paste(outdir, 'cell_locations.tsv', sep = '/'),
+        sep = "\t", quote = FALSE, col.names = TRUE, row.names = TRUE
+    )
+
+    require(Matrix)
+    sparse <- Matrix(srat @ assays $ RNA @ counts, sparse = T)
+    writeMM(sparse, file = paste(outdir, 'matrix.mtx', sep = '/'))
+}
 '''
 
 

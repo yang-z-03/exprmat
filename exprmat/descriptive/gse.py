@@ -14,6 +14,7 @@ def gse(
     de_slot, group_name = None,
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
+    max_q = 0.05,
 
     key_added = 'gsea',
     gene_sets = 'all',
@@ -46,6 +47,8 @@ def gse(
         tab = tab[tab['lfc'] >= min_lfc]
     if max_lfc is not None and 'lfc' in tab.columns:
         tab = tab[tab['lfc'] <= max_lfc]
+    if max_q is not None and 'q' in tab.columns:
+        tab = tab[tab['q'] <= max_q]
     if remove_zero_pval:
         tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
     
@@ -117,6 +120,7 @@ def opa(
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
     use_abs_lfc = False, min_abs_lfc = 1.0, max_abs_lfc = 25.0,
+    max_q = 0.05,
 
     key_added = 'opa',
     gene_sets = 'kegg',
@@ -152,6 +156,8 @@ def opa(
             tab = tab[tab['pct'] >= min_pct]
         if max_pct_reference is not None and 'pct.reference' in tab.columns:
             tab = tab[tab['pct.reference'] <= max_pct_reference]
+        if max_q is not None and 'q' in tab.columns:
+            tab = tab[tab['q'] <= max_q]
         
         if not use_abs_lfc:
             if min_lfc is not None and 'lfc' in tab.columns:

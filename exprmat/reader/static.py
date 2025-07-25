@@ -368,6 +368,7 @@ def rna_gsea(
     de_slot, group_name = None,
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
+    max_q = 0.05,
 
     key_added = 'gsea',
     gene_sets = 'all',
@@ -378,7 +379,8 @@ def rna_gsea(
         adata, taxa = taxa, de_slot = de_slot, group_name = None,
         min_pct = min_pct, max_pct_reference = max_pct_reference,
         min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
-        key_added = key_added, gene_sets = gene_sets, identifier = identifier
+        key_added = key_added, gene_sets = gene_sets, identifier = identifier,
+        max_q = max_q, 
     )
 
 
@@ -389,6 +391,7 @@ def rna_opa(
     min_pct = 0.0, max_pct_reference = 1, 
     min_lfc = None, max_lfc = None, remove_zero_pval = False,
     use_abs_lfc = False, min_abs_lfc = 1.0, max_abs_lfc = 25.0,
+    max_q = 0.05,
 
     key_added = 'gsea',
     gene_sets = 'all',
@@ -403,7 +406,7 @@ def rna_opa(
         min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
         use_abs_lfc = use_abs_lfc, min_abs_lfc = min_abs_lfc, max_abs_lfc = max_abs_lfc,
         key_added = key_added, gene_sets = gene_sets, identifier = identifier,
-        opa_cutoff = opa_cutoff, **kwargs
+        opa_cutoff = opa_cutoff, max_q = max_q, **kwargs
     )
 
 
@@ -816,14 +819,14 @@ def rna_plot_markers(adata, sample_name, figsize, dpi, **kwargs):
 def rna_plot_expression_bar(
     adata, sample_name, gene, group, split = None,
     slot = 'X', selected_groups = None, selected_splits = None, palette = ['red', 'black'], 
-    figsize = (6,3), dpi = 100
+    figsize = (6,3), dpi = 100, **kwargs
 ):
     from exprmat.plotting.expression import barplot
     pl = barplot(
         adata, gene = gene, slot = slot, group = group,
         split = split, selected_groups = selected_groups, 
         selected_splits = selected_splits, palette = palette,
-        size = figsize, dpi = dpi
+        size = figsize, dpi = dpi, **kwargs
     )
     return pl
 
@@ -831,7 +834,7 @@ def rna_plot_expression_bar(
 def rna_plot_expression_bar_multiple(
     adata, sample_name, features, ncols, group, split = None,
     slot = 'X', selected_groups = None, palette = ['red', 'black'], 
-    figsize = (6,3), dpi = 100
+    figsize = (6,3), dpi = 100, **kwargs
 ):
     from exprmat.plotting.expression import barplot
     import matplotlib.pyplot as plt
@@ -850,7 +853,7 @@ def rna_plot_expression_bar_multiple(
                     adata, gene = features[feat_id], slot = slot, group = group,
                     ax = axes[feat_id // ncols, feat_id % ncols],
                     split = split, selected_groups = selected_groups, palette = palette,
-                    size = figsize, dpi = dpi
+                    size = figsize, dpi = dpi, **kwargs
                 )
 
             elif len(axes.shape) == 1:
@@ -858,7 +861,7 @@ def rna_plot_expression_bar_multiple(
                     adata, gene = features[feat_id], slot = slot, group = group,
                     ax = axes[feat_id],
                     split = split, selected_groups = selected_groups, palette = palette,
-                    size = figsize, dpi = dpi
+                    size = figsize, dpi = dpi, **kwargs
                 )
         except: pass
     
@@ -895,7 +898,7 @@ def rna_plot_proportion(
         else: return 'Turbo'
 
     if plot == 'bar':
-        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False)
+        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False, cmap = 'turbo')
         fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
         fig.set_ylabel(f'Proportion ({minor})')
         fig.set_xlabel(major)
@@ -1465,3 +1468,130 @@ def rna_get_markers(
     )
     tab = tab.sort_values(by = ['scores'], ascending = False)
     return tab
+
+
+def rnaspc_transform(adata, sample, xfunc, yfunc):
+
+    adata.obsm['spatial'][:, 0] = xfunc(adata.obsm['spatial'][:, 0])
+    adata.obsm['spatial'][:, 1] = yfunc(adata.obsm['spatial'][:, 1])
+
+
+def rnaspc_roi(adata, sample, spsample, xlim, ylim, sample_added):
+
+    selection = (
+        (adata.obsm['spatial'][:, 0] > xlim[0]) &
+        (adata.obsm['spatial'][:, 0] < xlim[1]) &
+        (adata.obsm['spatial'][:, 1] > ylim[0]) &
+        (adata.obsm['spatial'][:, 1] < ylim[1]) &
+        (adata.obs['sample'] == spsample) 
+    )
+
+    sam = adata[selection, :].copy()
+    sam.obs['sample'] = sample_added
+    sam.obs['barcode'] = sam.obs['barcode'].str.replace(spsample + ':', sample_added + ':')
+    sam.obs['ubc'] = sam.obs['ubc'].str.replace(spsample + ':', sample_added + ':')
+    sam.obs_names = sam.obs['ubc'].tolist()
+    
+    return sam
+
+
+def rnaspc_plot_embedding_spatial(
+    adata, sample, 
+    sp_sample, image = 'hires', 
+    channel_colors = None,
+    channel_intensities = None,
+    interpolation = 'nearest', # bicubic may work better when there should avoid pepper-salt like noise.
+    **kwargs # to embedding plot
+):
+    
+    if image not in adata.uns['spatial'][sp_sample]['images'].keys():
+        warning(f'loaded image for this sample: {adata.uns["spatial"][sp_sample]["images"].keys()}')
+        error(f'failed to find image with key `{image}`.')
+
+    fig = rna_plot_embedding(adata[adata.obs['sample'] == sp_sample, :], sample, **kwargs)
+    ax = fig.axes[0]
+
+    # we assume that the coordinate stored in obsm['spatial'] always represent the
+    # original resolution. thus, for given image key e.g. 'hires', we will first
+    # query the suitable scaling factor
+    xfrom, xto = ax.get_xlim()
+    yfrom, yto = ax.get_ylim()
+    im = adata.uns['spatial'][sp_sample]['images'][image]
+
+    if isinstance(im, str) or isinstance(im, list):
+        from exprmat.reader.spatial import get_lazyload_shape
+        ymax, xmax, channel = get_lazyload_shape(im)
+    else: ymax, xmax, channel = im.shape
+    
+    if channel_intensities is None: channel_intensities = [1] * channel
+    if channel_colors is None:
+        if channel == 3: channel_colors = [(1,0,0), (0,1,0), (0,0,1)] # rgb
+        elif channel == 4: channel_colors = [
+            (0.243, 0.459, 0.89),
+            (0.839, 0.114, 0.643),
+            (0.643, 0.639, 0.11),
+            (0.278, 0.537, 0.071)
+        ] # 10x xenium explorer default
+        else: 
+            warning('can not guess a channel color mapping when there is > 4 channels.')
+            error('you should specify channel_colors manually.')
+    
+    scalefactor = adata.uns['spatial'][sp_sample]['scalefactors'][image]
+    if callable(scalefactor):
+        _xfrom = scalefactor(xfrom)
+        _xto = scalefactor(xto)
+        _yfrom = scalefactor(yfrom)
+        _yto = scalefactor(yto)
+    else:
+        _xfrom = scalefactor * xfrom
+        _xto = scalefactor * xto
+        _yfrom = scalefactor * yfrom
+        _yto = scalefactor * yto
+
+    # turns to integer coordinate
+    _yfrom = int(_yfrom); _yto = int(_yto)
+    _xfrom = int(_xfrom); _xto = int(_xto)
+
+    # query in image resolution
+    if _xfrom < 0: _xfrom = 0
+    if _xto >= xmax: _xto = xmax - 1
+    if _yfrom < 0: _yfrom = 0
+    if _yto >= ymax: _yto = ymax - 1
+    
+
+    # color mixer.
+    mix_r = np.zeros((_yto - _yfrom, _xto - _xfrom))
+    mix_g = np.zeros((_yto - _yfrom, _xto - _xfrom))
+    mix_b = np.zeros((_yto - _yfrom, _xto - _xfrom))
+
+    if isinstance(im, str) or isinstance(im, list):
+        from exprmat.reader.spatial import read_fullres_from_lazyload
+        im = read_fullres_from_lazyload(im, (_xfrom, _xto, _yfrom, _yto))
+    else: im = im[_yfrom:_yto, _xfrom:_xto, ...]
+    
+    for h, c in zip(range(channel), channel_colors):
+        imc = im[..., h]
+        mix_r += imc * c[0] * channel_intensities[h]
+        mix_g += imc * c[1] * channel_intensities[h]
+        mix_b += imc * c[2] * channel_intensities[h]
+    
+    mix_r[mix_r > 1] = 1
+    mix_g[mix_g > 1] = 1
+    mix_b[mix_b > 1] = 1
+    mix = np.stack([mix_r, mix_g, mix_b], axis = 2)
+
+    ax.imshow(
+        mix,
+        aspect = 'auto', extent = (
+            _xfrom / scalefactor, 
+            _xto / scalefactor, 
+            _yfrom / scalefactor, 
+            _yto / scalefactor
+        ), interpolation = interpolation,
+        origin = 'lower'
+    )
+
+    ax.set_xlim(xfrom, xto)
+    ax.set_ylim(yfrom, yto)
+
+    return fig

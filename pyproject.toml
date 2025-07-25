@@ -18,7 +18,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.33"
+version = "0.1.35"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -88,7 +88,12 @@ dependencies = [
     'scikit-image',
     'spatial-image',
     'multiscale-spatial-image',
-    'tangram-sc'
+    'tangram-sc',
+    'shapely >= 2.0.0',
+    'pyogrio >= 0.7.2',
+    'pyproj >= 3.3.0',
+    'geopandas',
+    'packaging'
 ]
 
 [project.optional-dependencies]

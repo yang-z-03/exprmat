@@ -38,6 +38,8 @@ class Configuration:
             'hsa': 'grch38'
         }
 
+        self.config['max.image'] = int(10000 * 50000)
+
 
     def __getitem__(self, index):
         return self.config[index]

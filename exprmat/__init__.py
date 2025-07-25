@@ -10,12 +10,13 @@ import anndata as ad
 import scanpy as sc
 import pandas as pd
 import pathlib
+from PIL import Image
 
 from exprmat.configuration import default as config
 from exprmat.ansi import warning, info
 
 mu.set_options(pull_on_update = False)
-
+Image.MAX_IMAGE_PIXELS = config['max.image']
 
 DATABASE_SETUP_MESSAGE = """
 The exprmat package do not come with a included database after version 0.1.25, 

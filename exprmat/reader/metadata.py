@@ -237,6 +237,40 @@ class metadata:
         temp = [value if (contains in str(x)) else y for x, y in zip(source, temp)]
         self.dataframe[dest] = temp
 
+
+    def find(self, modality, sample):
+        
+        from exprmat.ansi import error, warning
+        df = self.dataframe[(
+            (self.dataframe['sample'] == sample) &
+            (self.dataframe['modality'] == modality)
+        )]
+
+        if len(df) == 1:
+            return df.iloc[0]
+        elif len(df) == 0:
+            warning(f'could not find [{modality}] {sample}')
+            return None
+        else: error(f'duplicated sample for {sample}')
+
+
+    def insert_row(self, row):
+
+        from exprmat.ansi import error
+        insert_index = len(self.dataframe)
+        # get the modality and sample name if there exists one:
+        selection: pandas.Series = (
+            (self.dataframe['modality'] == row['modality']) &
+            (self.dataframe['sample'] == row['sample'])
+        )
+
+        if selection.sum() == 1:
+            insert_index = selection.tolist().index(True)
+        elif selection.sum() == 0: pass
+        else: error('failed to insert row for duplicated index.')
+
+        self.dataframe.loc[insert_index] = row
+
     
 def load_metadata(fpath):
     '''

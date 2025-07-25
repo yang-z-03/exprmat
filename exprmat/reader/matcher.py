@@ -250,7 +250,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
 def read_mtx_rna(
     src: str, prefix: str, 
     metadata: metadata, sample: str, raw: bool = False,
-    default_taxa = 'mmu', eccentric = None
+    default_taxa = 'mmu', eccentric = None, suppress_filter = False,
 ):
     '''
     Formalize the three components in the matrix directory, and read the folder with gene
@@ -299,7 +299,41 @@ def read_mtx_rna(
     #     return None
 
     final = match_matrix_rna(
-        adata, metadata, sample, 
+        adata, metadata, sample, suppress_filter = suppress_filter,
+        force_filter = raw, default_taxa = default_taxa
+    )
+
+    warnings.filterwarnings('default')
+    
+    del adata
+    return final
+
+
+def read_h5_rna(
+    path: str, 
+    metadata: metadata, sample: str, raw: bool = False,
+    default_taxa = 'mmu', eccentric = None, suppress_filter = False,
+):
+    import warnings
+    warnings.filterwarnings('ignore')
+
+    adata = sc.read_10x_h5(
+        path, gex_only = True
+    )
+
+    adata.var_names = adata.var['gene_ids'].tolist()
+    del adata.var
+
+    if eccentric is not None:
+        adata.var_names = [eccentric(x) for x in adata.var_names]
+
+    # except Exception as ex: 
+    #     warning('error occurs when reading matrix files:')
+    #     warning(str(ex))
+    #     return None
+
+    final = match_matrix_rna(
+        adata, metadata, sample, suppress_filter = suppress_filter,
         force_filter = raw, default_taxa = default_taxa
     )
 
@@ -429,22 +463,28 @@ def read_h5ad_rna(
 
 
 def match_matrix_rna(
-        adata, metadata: metadata, sample: str, 
-        force_filter = False, default_taxa = 'mmu',
-        do_not_alter_obs_names = False
-    ):
+    adata, metadata: metadata, sample: str, 
+    force_filter = False, default_taxa = 'mmu',
+    do_not_alter_obs_names = False, suppress_filter = False
+):
 
     # if more than 50000 cells in a single matrix, we just believe that it is
     # an unfiltered raw matrix. we should roughly filter the empty droplets
 
-    if adata.n_obs > 50000 or force_filter:
+    if (adata.n_obs > 50000 or force_filter) and (not suppress_filter):
         valid = (adata.X.sum(axis = 1).transpose() > 200).tolist()[0]
         adata_f = adata[valid, :]
+
     else: adata_f = adata
 
     rows = metadata.dataframe[metadata.dataframe['sample'] == sample]
     assert len(rows) >= 1
-    rows = rows[rows['modality'] == 'rna']
+    rows = rows[
+        (rows['modality'] == 'rna') |
+        (rows['modality'] == 'rnasp-c') |
+        (rows['modality'] == 'rnasp-b') |
+        (rows['modality'] == 'rnasp-s')
+    ]
     assert len(rows) == 1
     props = rows.iloc[0]
 

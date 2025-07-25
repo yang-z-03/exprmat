@@ -99,7 +99,7 @@ def cnmf_distance_modules(
         if annotations in adata.var.columns: 
             annotations = adata.var.iloc[subset, :].iloc[order, :][annotations].tolist()
         elif annotations in adata.varm.keys(): 
-            annotations = adata[subset, :][order, :].varm[annotations]
+            annotations = adata[:, subset][:, order].varm[annotations]
 
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
