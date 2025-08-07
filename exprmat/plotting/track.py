@@ -357,6 +357,36 @@ def gene_track(
     return ax, model
 
 
+def bed_track(df, ax, chr, xfrom, xto):
+
+    gmodel = df.loc[df['chr'] == chr, :]
+    gmodel = gmodel.loc[(gmodel['end'] >= xfrom) & (gmodel['start'] <= xto), :].copy()
+
+    # draw all the genome features in a unannotated boxplot
+    # this may color the genes by its type.
+
+    genes = gmodel
+    ax.set_ylim((0, 1))
+
+    def draw_box(ax, xf, xt, face = 'blue', stroke = 'blue', lw = 1, round = False):
+        from matplotlib.patches import Rectangle as rectpatch
+        rect = rectpatch(
+            xy = (max(xf, xfrom - 0.1 * (xto - xfrom)), 0.2), 
+            width = min(xt, xto + 0.1 * (xto - xfrom)) - max(xf, xfrom - 0.1 * (xto - xfrom)), height = 0.6,
+            edgecolor = stroke, facecolor = face, linewidth = lw
+        )
+
+        ax.add_patch(rect)
+
+    def draw_boxes(ax, df, face = 'blue', stroke = 'blue', lw = 1, round = False):
+        for start, end in zip(df['start'], df['end']):
+            draw_box(ax, start, end, face, stroke, lw, round)
+    
+    draw_boxes(ax, genes, face = 'blue', stroke = 'blue', lw = 1)
+
+    return ax
+
+
 def linking_track(
     ax,
     xfrom, xto,
@@ -446,7 +476,7 @@ def coverage_track_from_bigwig(
     '''
     Examples
     --------
-    >>> coverage_track_from_bam(
+    >>> coverage_track_from_bigwig(
     >>>     axes[3], './fc.bigwig', 
     >>>     xfrom, xto, chr_bam, xticks, ncpus = 4, xlabel = None, ylabel = 'WT', 
     >>>     show_x_axis = True
@@ -570,21 +600,29 @@ def genes(
 def whereis(assembly, where, upstream = 10000, downstream = 10000):
 
     from exprmat.configuration import default as cfg
-    from exprmat.data.finders import get_genome
+    from exprmat.data.finders import get_genome, get_genome_model
+    from exprmat.ansi import error
 
     gtable = get_genome(cfg['taxa.reference'][assembly.lower()])
+    gmodel = get_genome_model(assembly.lower())
+    gmodel = gmodel.loc[gmodel['type'] == 'gene', :].copy()
+
     ens = gtable['ensembl'].tolist()
     name = gtable['gene'].tolist()
+    gene_ensembl_id = ''
 
-    if where in ens:
-        geneattr = gtable.iloc[ens.index(where), :].copy()
-    elif where in name:
-        geneattr = gtable.iloc[name.index(where), :].copy()
-    else: geneattr = gtable[where, :].copy()
+    if where in ens: gene_ensembl_id = where
+    elif where in name: gene_ensembl_id = ens[name.index(where)]
+    else: gene_ensembl_id = ens[gtable.index.tolist().index(where)]
 
-    chr = geneattr['.seqid']
-    xfrom = geneattr['.start'] - upstream
-    xto = geneattr['.end'] + downstream
+    gmodel = gmodel.loc[gmodel['id'] == gene_ensembl_id, :]
+    if len(gmodel) != 1:
+        error(f'found {len(gmodel)} items with identifier {where}.')
+    else: geneattr = gmodel.iloc[0, :]
+    
+    chr = geneattr['chr']
+    xfrom = geneattr['start'] - upstream
+    xto = geneattr['end'] + downstream
 
     return chr, xfrom, xto
     

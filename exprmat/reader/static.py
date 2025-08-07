@@ -3,6 +3,7 @@ import scanpy as sc
 import anndata as ad
 import pandas as pd
 import numpy as np
+from collections import defaultdict
 import os
 
 from exprmat.data.finders import get_genome
@@ -94,11 +95,14 @@ def rna_filter(adata, sample_name):
     return qc_cells
 
 
-def rna_log_normalize(adata, sample_name, key_norm = 'norm', key_lognorm = 'lognorm', **kwargs):
+def rna_log_normalize(
+    adata, sample_name, key_source = 'X', 
+    key_norm = 'norm', key_lognorm = 'lognorm', **kwargs
+):
     from exprmat.preprocessing import log_transform, normalize
-    normalize(adata, counts = 'X', dest = key_norm, method = 'total', **kwargs)
+    normalize(adata, counts = key_source, dest = key_norm, method = 'total', **kwargs)
     log_transform(adata, norm = key_norm, dest = key_lognorm)
-    adata.layers['counts'] = adata.X
+    if key_source == 'X': adata.layers['counts'] = adata.X
     adata.X = adata.layers[key_lognorm]
 
 
@@ -199,6 +203,62 @@ def rna_mde_fit(
 def rna_markers(adata, sample_name, **kwargs):
     from exprmat.descriptive.de import markers
     markers(adata, **kwargs)
+
+
+def rna_markers_deseq(
+    adata, sample_name, counts = 'counts', 
+    metadata = ['sample', 'group'], formula = '~ group',
+    variable = 'group', experiment = '.', control = '.', 
+    statistics_params = {'quiet': True},
+    key_added = 'markers',
+    **kwargs
+):
+    
+    from exprmat.deseq.dataset import deseq_dataset
+    from exprmat.deseq.stats import deseq_stats
+    from exprmat.utils import choose_layer
+
+    maybe_sparse = choose_layer(adata, layer = counts)
+    from scipy.sparse import issparse
+    if issparse(maybe_sparse):
+        maybe_sparse = maybe_sparse.todense()
+    
+    if isinstance(maybe_sparse, np.matrix):
+        maybe_sparse = np.array(maybe_sparse)
+
+    # deseq can only apply on integral values.
+    maybe_sparse = np.floor(maybe_sparse)
+
+    # build deseq dataset
+    annd = ad.AnnData(
+        X = maybe_sparse,
+        obs = adata.obs[metadata]
+    )
+
+    dds = deseq_dataset(adata = annd, design = formula, **kwargs)
+    dds.deseq2()
+
+    dstat = deseq_stats(dds, [variable, experiment, control], **statistics_params)
+    dstat.summary()
+
+    stat = dstat.results_df.copy()
+    stat.columns = ['mean', 'lfc', 'lfc.se', 'scores', 'p', 'q']
+    stat['names'] = adata.var_names.tolist()
+    stat['gene'] = adata.var['gene'].tolist()
+    stat = stat.loc[~np.isnan(stat['mean']), :].copy()
+    stat.loc[np.isnan(stat['q']), 'q'] = 1
+
+    with np.errstate(divide = 'ignore'):
+        stat['log10.p'] = -np.log10(stat['p'])
+        stat['log10.q'] = -np.log10(stat['q'])
+
+    # attach differential gene to uns
+    adata.uns[key_added] = {
+        'params': {'reference': control},
+        'differential': {
+            experiment: stat
+        }
+    }
 
 
 def rna_kde(adata, sample_name, **kwargs):
@@ -732,31 +792,294 @@ def atac_spectral(adata, sample_name, key_added = 'spectral', **kwargs):
     spectral(adata, key_added = key_added, **kwargs)
 
 
-def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, **kwargs):
-    from exprmat.reader.peaks import make_gene_matrix
+def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = True, **kwargs):
+    
+    if 'bedgraph' in adata.obs.keys():
+        
+        # query bedgraph values with ranges defined in peaks
+        # and create a new modality named 'atac.p' (atac represent bin matrix,
+        # atac.g represent gene matrix, and atac.p as peak matrix.)
+        
+        from exprmat.data.finders import get_genome_model
+        gmodel = get_genome_model(adata.uns['assembly'])
+        gmodel = gmodel.loc[gmodel['type'] == 'gene', :].copy()
+        bedgraphs = adata.obs['bedgraph'].tolist()
+        import pyBigWig as pybw
+        import pyBedGraph as pybdg
+        from rich.progress import track
+        
+        # generate a matrix with n_peaks * n_samples
+        # obs tables are copied from obs, and var tables from peak table.
+
+        mat = np.zeros(shape = (adata.n_obs, len(gmodel)), dtype = np.float32)
+        for i, fp in enumerate(bedgraphs):
+
+            ftype = 'bedgraph'
+            fhandle = None
+            if os.path.isfile(fp.replace('.bdg', '.bigwig')):
+                fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
+                ftype = 'bigwig'
+            else: fhandle = pybdg.BedGraph('', fp)
+            
+            for i_region in track(range(len(gmodel)), description = f'querying genes for {fp}'):
+
+                peak = gmodel.iloc[i_region, :]
+                # retrieve statistics.
+                if ftype == 'bigwig':
+                    # open the companion bigwig file for more efficient io.
+                    mat[i, i_region] = (peak['end'] - peak['start']) * fhandle.stats(
+                        peak['ucsc'], peak['start'], peak['end'], type = 'mean', exact = exact
+                    )[0]
+
+                else: raise NotImplementedError
+        
+        from scipy.sparse import csr_matrix
+        gdata = ad.AnnData(X = csr_matrix(np.nan_to_num(mat)), obs = adata.obs)
+        gdata.var_names = gmodel['gid'].tolist()
+
+        taxa = cfg['taxa.reference'][adata.uns['assembly']]
+        from exprmat.utils import genes_from_names
+        gmask, names, _ = genes_from_names(gdata.var_names.tolist(), taxa)
+        gdata = gdata[:, gmask].copy()
+        gdata.var_names = names
+        gdata.var = search_genes(gdata.var_names.tolist())
+        gdata = gdata[:, ~gdata.var_names.duplicated()].copy()
+        gdata.uns['assembly'] = adata.uns['assembly']
+        gdata.uns['assembly.size'] = adata.uns['assembly.size']
+        return gdata
+    
+    else:
+        from exprmat.reader.peaks import make_gene_matrix
+        taxa = cfg['taxa.reference'][adata.uns['assembly']]
+        # this method requires the location as variable names
+        adata.var_names = adata.var['location'].tolist()
+        gene_activity = make_gene_matrix(adata, adata.uns['assembly'], **make_gene_args)
+        adata.var_names = adata.var['unique'].tolist()
+
+        gene_activity.X = gene_activity.X.astype(np.float32)
+        # obs slots are copied from the original bins adata.
+        for obsmk in adata.obsm.keys():
+            if obsmk in ['paired', 'single']: continue
+            gene_activity.obsm[obsmk] = adata.obsm[obsmk]
+        # variable names are gene names
+        from exprmat.utils import genes_from_names
+        gmask, names, _ = genes_from_names(gene_activity.var_names.tolist(), taxa)
+        gene_activity = gene_activity[:, gmask].copy()
+        gene_activity.var_names = names
+        gene_activity.var = search_genes(gene_activity.var_names.tolist())
+
+        # remove non-expressing genes.
+        gmask = gene_activity.X.sum(axis = 0) > 0.01
+        gene_activity = gene_activity[:, gmask.tolist()[0]].copy()
+        gene_activity.uns['assembly'] = adata.uns['assembly']
+        gene_activity.uns['assembly.size'] = adata.uns['assembly.size']
+        return gene_activity
+
+
+def atac_call_peaks(adata, sample_name, key_added = 'peaks', **kwargs):
+    from exprmat.peaks.callpeak import (
+        call_peak_from_bedgraph, 
+        call_peak_from_fragments
+    )
+
+    if 'bedgraph' in adata.obs.keys():
+        if key_added not in adata.uns.keys():
+            adata.uns[key_added] = {}
+        
+        for bdg, samp in zip(adata.obs['bedgraph'].tolist(), adata.obs['sample'].tolist()):
+            if len(bdg) == 0: continue
+            adata.uns[key_added][samp] = call_peak_from_bedgraph(bdg, **kwargs)
+    
+    else: call_peak_from_fragments(adata, key_added = key_added, **kwargs)
+
+
+def atac_merge_peaks(adata, sample_name, key_peaks = 'peaks', key_added = 'peaks.merged', key_groups = 'peaks.group', groupby = 'group', **kwargs):
+    
+    from exprmat.peaks.idr.idr import idr
+    if 'bedgraph' in adata.obs.keys():
+        sample_key = list(adata.uns[key_peaks].keys())
+        group_to_sample_mapping = defaultdict(list)
+        for g, k in zip(adata.obs[groupby], adata.obs['sample']):
+            group_to_sample_mapping[g] += [k]
+        
+        # merge within duplicates
+        group_peaks = {}
+        for g in group_to_sample_mapping.keys():
+            
+            if len(group_to_sample_mapping[g]) == 1:
+                group_peaks[g] = adata.uns[key_peaks][group_to_sample_mapping[g][0]]
+            
+            elif len(group_to_sample_mapping[g]) == 2:
+                # info(f'merging peaks from {group_to_sample_mapping[g][0]} and {group_to_sample_mapping[g][1]} (group {g})')
+                group_peaks[g] = idr(
+                    df1 = adata.uns[key_peaks][group_to_sample_mapping[g][0]],
+                    df2 = adata.uns[key_peaks][group_to_sample_mapping[g][1]],
+                    signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                    use_nonoverlapping_peaks = False, **kwargs
+                )
+
+            else:
+                from exprmat.utils import reduce
+                lst = [adata.uns[key_peaks][x] for x in group_to_sample_mapping[g]]
+                group_peaks[g] = reduce(
+                    idr, lst, 
+                    signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                    use_nonoverlapping_peaks = False, **kwargs
+                )
+            
+            info(f'yield {len(group_peaks[g])} peaks for group {g}')
+
+        adata.uns[key_groups] = group_peaks
+
+        # merge between groups (nonredundant)
+        if len(group_peaks) == 1:
+            adata.uns[key_added] = group_peaks[list(group_peaks.keys())[0]]
+        elif len(group_peaks) == 2:
+            keys = list(group_peaks.keys())
+            adata.uns[key_added] = idr(
+                df1 = group_peaks[keys[0]],
+                df2 = group_peaks[keys[1]],
+                signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                use_nonoverlapping_peaks = True,
+                only_merge_peaks = True, **kwargs
+            )
+        else:
+            from exprmat.utils import reduce
+            lst = [group_peaks[x] for x in group_peaks.keys()]
+            adata.uns[key_added] = reduce(
+                idr, lst,
+                signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                use_nonoverlapping_peaks = True,
+                only_merge_peaks = True, **kwargs
+            )
+    
+    else: raise NotImplementedError
+
+
+def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact = True, **kwargs):
+    
+    from exprmat.peaks.idr.idr import idr
+
+    if 'bedgraph' in adata.obs.keys():
+        
+        # query bedgraph values with ranges defined in peaks
+        # and create a new modality named 'atac.p' (atac represent bin matrix,
+        # atac.g represent gene matrix, and atac.p as peak matrix.)
+        
+        peak_table = adata.uns[key_peaks]
+        peak_table.index = (
+            'peak:' + peak_table['chr'] + ':' + peak_table['start'].astype('str') + 
+            '-' + peak_table['end'].astype('str')
+        )
+
+        peak_table.index.name = None
+        bedgraphs = adata.obs['bedgraph'].tolist()
+        
+        import pyBigWig as pybw
+        import pyBedGraph as pybdg
+        from rich.progress import track
+        
+        # generate a matrix with n_peaks * n_samples
+        # obs tables are copied from obs, and var tables from peak table.
+
+        mat = np.zeros(shape = (adata.n_obs, len(peak_table)), dtype = np.float32)
+        for i, fp in enumerate(bedgraphs):
+
+            ftype = 'bedgraph'
+            fhandle = None
+            if os.path.isfile(fp.replace('.bdg', '.bigwig')):
+                fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
+                ftype = 'bigwig'
+            else: fhandle = pybdg.BedGraph('', fp)
+            
+            for i_region in track(range(len(peak_table)), description = f'querying peaks for {fp}'):
+
+                peak = peak_table.iloc[i_region, :]
+                # retrieve statistics.
+                if ftype == 'bigwig':
+                    # open the companion bigwig file for more efficient io.
+                    mat[i, i_region] = (peak['end'] - peak['start']) * fhandle.stats(
+                        peak['chr'], peak['start'], peak['end'], type = 'mean', exact = exact
+                    )[0]
+
+                else: raise NotImplementedError
+
+        from scipy.sparse import csr_matrix
+        pdata = ad.AnnData(X = csr_matrix(np.nan_to_num(mat)), obs = adata.obs, var = peak_table)
+        pdata.uns['assembly'] = adata.uns['assembly']
+        pdata.uns['assembly.size'] = adata.uns['assembly.size']
+        return pdata
+    
+    else: raise NotImplementedError
+
+
+def atacp_annotate_peak(
+    adata, sample_name, 
+    annotation_key = 'type', 
+    gene_key = 'tss.nearest',
+    ugene_key = 'ugene',
+    gname_key = 'gene', 
+    distance_key = 'tss.dist'
+):
+
+    # annotate peaks onto nearest gene features.
+    from genomicranges.GenomicRanges import GenomicRanges as granges
+    from exprmat.data.finders import (
+        get_genome_promoters,
+        get_genome_utr3,
+        get_genome_utr5,
+        get_genome_first_exonic,
+        get_genome_other_exonic,
+        get_genome_first_intronic,
+        get_genome_transcript
+    )
+
+    query = granges.from_pandas(pd.DataFrame({
+        "seqnames": adata.var['chr'].tolist(), 
+        "starts": adata.var['start'].tolist(), 
+        "ends": adata.var['end'].tolist(), 
+        "strand": [x if x in ['+', '-'] else '*' for x in adata.var['strand'].tolist()]
+    }))
+
+    adata.var[annotation_key] = 'intergenic'
+    adata.var[gene_key] = '.'
+    adata.var[ugene_key] = '.'
+    adata.var[gname_key] = '.'
+    adata.var[distance_key] = float('nan')
+
+    def search_and_apply(adata, query: granges, search: granges, annotation):
+        result = search.find_overlaps(query, query_type = 'any', select = 'first')
+        adata.var.iloc[result['query_hits'], adata.var.columns.tolist().index(annotation_key)] = annotation
+    
+    promoters = get_genome_promoters(adata.uns['assembly'], True)
+    search_and_apply(adata, query, get_genome_transcript(adata.uns['assembly'], True), 'genebody')
+    search_and_apply(adata, query, get_genome_first_intronic(adata.uns['assembly'], True), 'first-intron')
+    search_and_apply(adata, query, get_genome_other_exonic(adata.uns['assembly'], True), 'other-exons')
+    search_and_apply(adata, query, get_genome_first_exonic(adata.uns['assembly'], True), 'first-exon')
+    search_and_apply(adata, query, get_genome_utr3(adata.uns['assembly'], True), 'utr3')
+    search_and_apply(adata, query, get_genome_utr5(adata.uns['assembly'], True), 'utr5')
+    search_and_apply(adata, query, promoters, 'promoter')
+
+    tss = promoters.narrow(start = 2999, end = 2999)
+    nearest_gene = tss.nearest(query, select = 'arbitrary', ignore_strand = False)
+    adata.var[gene_key] = tss.mcols[nearest_gene, 'gene']['gene']
+    peak_index = adata.var['start'] + adata.var['summit']
+    central_tss = (tss[nearest_gene.tolist()].start + tss[nearest_gene.tolist()].end) / 2
+    adata.var[distance_key] = peak_index - central_tss
+
     taxa = cfg['taxa.reference'][adata.uns['assembly']]
-    # this method requires the location as variable names
-    adata.var_names = adata.var['location'].tolist()
-    gene_activity = make_gene_matrix(adata, adata.uns['assembly'], **make_gene_args)
-    adata.var_names = adata.var['unique'].tolist()
-
-    gene_activity.X = gene_activity.X.astype(np.float32)
-    # obs slots are copied from the original bins adata.
-    for obsmk in adata.obsm.keys():
-        if obsmk in ['paired', 'single']: continue
-        gene_activity.obsm[obsmk] = adata.obsm[obsmk]
-    # variable names are gene names
     from exprmat.utils import genes_from_names
-    gmask, names, _ = genes_from_names(gene_activity.var_names.tolist(), taxa)
-    gene_activity = gene_activity[:, gmask].copy()
-    gene_activity.var_names = names
-    gene_activity.var = search_genes(gene_activity.var_names.tolist())
+    gmask, names, _ = genes_from_names(adata.var[gene_key].tolist(), taxa)
+    adata.var.loc[gmask, ugene_key] = names
+    gmeta = search_genes(names)
+    adata.var.loc[gmask, gname_key] = gmeta['gene'].tolist()
+    pass
 
-    # remove non-expressing genes.
-    gmask = gene_activity.X.sum(axis = 0) > 0.01
-    gene_activity = gene_activity[:, gmask.tolist()[0]].copy()
-    return gene_activity
 
+def atacp_retrieve_sequence(adata, sample_name):
+    from exprmat.peaks.sequence import query_sequence
+    query_sequence(adata)
+    
 
 def rna_plot_qc(adata, sample_name, **kwargs):
     from exprmat.preprocessing.plot import rna_plot_qc_metrics
@@ -885,7 +1208,7 @@ def rna_plot_compare_scatter(
 
 
 def rna_plot_proportion(
-    adata, sample_name, major, minor, plot = 'bar', cmap = 'Turbo',
+    adata, sample_name, major, minor, plot = 'bar', cmap = 'turbo',
     normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
 ):
     if normalize == 'major': normalize = 'columns'
@@ -895,10 +1218,10 @@ def rna_plot_proportion(
     def get_palette(n):
         if n + '.colors' in adata.uns.keys():
             return adata.uns[n + '.colors']
-        else: return 'Turbo'
+        else: return 'turbo'
 
     if plot == 'bar':
-        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False, cmap = 'turbo')
+        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False, cmap = cmap)
         fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
         fig.set_ylabel(f'Proportion ({minor})')
         fig.set_xlabel(major)
@@ -1238,7 +1561,7 @@ def rna_plot_gsea_dotplot(
 ):
     from exprmat.plotting.gse import gsea_dotplot
     return gsea_dotplot(
-        rna_get_gsea(adata, gsea_key, max_fdr = max_fdr, max_p = max_p),
+        rna_get_gsea(adata, None, gsea_key, max_fdr = max_fdr, max_p = max_p),
         column = colour, x = 'nes', y = 'name', title = gsea_key if title is None else title,
         cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
         terms = terms, formatter = formatter
@@ -1252,7 +1575,7 @@ def rna_plot_opa_dotplot(
 ):
     from exprmat.plotting.gse import opa_dotplot
     return opa_dotplot(
-        rna_get_opa(adata, opa_key, max_fdr = max_fdr, max_p = max_p),
+        rna_get_opa(adata, None, opa_key, max_fdr = max_fdr, max_p = max_p),
         column = colour, x = 'or', y = 'term', title = opa_key if title is None else title,
         cmap = cmap, size = ptsize, figsize = figsize, cutoff = cutoff, top_term = top_term,
         terms = terms, formatter = formatter
@@ -1367,7 +1690,7 @@ def atac_plot_qc(adata, sample_name, **kwargs):
     return atac_qc_metrics(adata, sample_name, **kwargs)
 
 
-def rna_get_gsea(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+def rna_get_gsea(adata, sample_name, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
     
     df = {
         'name': [],
@@ -1399,7 +1722,7 @@ def rna_get_gsea(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
     return df
 
 
-def rna_get_opa(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
+def rna_get_opa(adata, sample_name, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
     
     df = pd.DataFrame(adata.uns[gsea_slot])
 
@@ -1413,7 +1736,7 @@ def rna_get_opa(adata, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):
 
 
 def rna_get_lr(
-    adata, lr_slot = 'lr', source_labels = None, target_labels = None,
+    adata, sample_name, lr_slot = 'lr', source_labels = None, target_labels = None,
     ligand_complex = None, receptor_complex = None, 
     filter_fun = None, top_n: int = None,
     orderby: str | None = None,
@@ -1438,7 +1761,7 @@ def rna_get_lr(
 
 
 def rna_get_markers(
-    adata, de_slot = 'markers', group_name = None, max_q = None,
+    adata, sample_name, de_slot = 'markers', group_name = None, max_q = None,
     min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
 ):
     params = adata.uns[de_slot]['params']
@@ -1508,7 +1831,7 @@ def rnaspc_plot_embedding_spatial(
         warning(f'loaded image for this sample: {adata.uns["spatial"][sp_sample]["images"].keys()}')
         error(f'failed to find image with key `{image}`.')
 
-    fig = rna_plot_embedding(adata[adata.obs['sample'] == sp_sample, :], sample, **kwargs)
+    fig = rna_plot_embedding(adata[adata.obs['sample'] == sp_sample, :].copy(), sample, **kwargs)
     ax = fig.axes[0]
 
     # we assume that the coordinate stored in obsm['spatial'] always represent the
@@ -1569,6 +1892,10 @@ def rnaspc_plot_embedding_spatial(
         im = read_fullres_from_lazyload(im, (_xfrom, _xto, _yfrom, _yto))
     else: im = im[_yfrom:_yto, _xfrom:_xto, ...]
     
+    # uniform to 0-1
+    if im.dtype == np.uint8:
+        im = im / 255
+        
     for h, c in zip(range(channel), channel_colors):
         imc = im[..., h]
         mix_r += imc * c[0] * channel_intensities[h]
@@ -1595,3 +1922,27 @@ def rnaspc_plot_embedding_spatial(
     ax.set_ylim(yfrom, yto)
 
     return fig
+
+
+def adata_filter_row_by_sum(
+    adata, sample, 
+    min_sum = 3, max_sum = np.finfo(np.float32).max, 
+    layer = 'X'
+):
+    from exprmat.utils import choose_layer
+    mat = choose_layer(adata, layer = layer)
+    sums = mat.sum(1).reshape(-1)
+    mask = (sums > min_sum) & (sums < max_sum)
+    return adata[mask, :].copy()
+
+
+def adata_filter_column_by_sum(
+    adata, sample, 
+    min_sum = 3, max_sum = np.finfo(np.float32).max, 
+    layer = 'X'
+):
+    from exprmat.utils import choose_layer
+    mat = choose_layer(adata, layer = layer)
+    sums = mat.sum(0).reshape(-1)
+    mask = (sums > min_sum) & (sums < max_sum)
+    return adata[:, mask].copy()

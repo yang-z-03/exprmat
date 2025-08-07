@@ -49,7 +49,9 @@ from re import match
 from typing import TYPE_CHECKING, TypeAlias, cast
 from typing import ClassVar, Iterator
 import numpy as np
+
 from exprmat.ansi import error
+from matplotlib.colors import Colormap
 
 rgb_tuple = tuple[int, int, int] | tuple[int, int, int, float]
 
@@ -84,11 +86,21 @@ class color:
     def from_rgb(cls, value: rgb_color):
         raise NotImplementedError
 
-    def lighten(self, amount: float):
+    def lighten(self, amount: float) -> rgb_color:
         rgb = self.to_rgb()
         h, l, s = colorsys.rgb_to_hls(float(rgb.r)/255, float(rgb.g)/255, float(rgb.b)/255)
         new_l = self.clamp(l + amount, 1)
         r, g, b = colorsys.hls_to_rgb(h, new_l, s)
+        rgb.r = round(r * 255)
+        rgb.g = round(g * 255)
+        rgb.b = round(b * 255)
+        return self.from_rgb(rgb)
+
+    def saturate(self, amount: float):
+        rgb = self.to_rgb()
+        h, l, s = colorsys.rgb_to_hls(float(rgb.r)/255, float(rgb.g)/255, float(rgb.b)/255)
+        new_s = self.clamp(s * amount, 1)
+        r, g, b = colorsys.hls_to_rgb(h, l, new_s)
         rgb.r = round(r * 255)
         rgb.g = round(g * 255)
         rgb.b = round(b * 255)
@@ -1383,96 +1395,102 @@ TolRainbow = { 3:  TolRainbow3,  4:  TolRainbow4,  5:  TolRainbow5,  6:  TolRain
                 18: TolRainbow18, 19: TolRainbow19, 20: TolRainbow20, 21: TolRainbow21, 22: TolRainbow22, 23: TolRainbow23 }
 
 brewer = {
-    'YlGn'     : YlGn,
-    'YlGnBu'   : YlGnBu,
-    'GnBu'     : GnBu,
-    'BuGn'     : BuGn,
-    'PuBuGn'   : PuBuGn,
-    'PuBu'     : PuBu,
-    'BuPu'     : BuPu,
-    'RdPu'     : RdPu,
-    'PuRd'     : PuRd,
-    'OrRd'     : OrRd,
-    'YlOrRd'   : YlOrRd,
-    'YlOrBr'   : YlOrBr,
-    'Purples'  : Purples,
-    'Blues'    : Blues,
-    'Greens'   : Greens,
-    'Oranges'  : Oranges,
-    'Reds'     : Reds,
-    'Greys'    : Greys,
-    'PuOr'     : PuOr,
-    'BrBG'     : BrBG,
-    'PRGn'     : PRGn,
-    'PiYG'     : PiYG,
-    'RdBu'     : RdBu,
-    'RdGy'     : RdGy,
-    'RdYlBu'   : RdYlBu,
-    'Spectral' : Spectral,
-    'RdYlGn'   : RdYlGn,
-    'Accent'   : Accent,
-    'Dark2'    : Dark2,
-    'Paired'   : Paired,
-    'Pastel1'  : Pastel1,
-    'Pastel2'  : Pastel2,
-    'Set1'     : Set1,
-    'Set2'     : Set2,
-    'Set3'     : Set3,
+    'ylgn'     : YlGn,
+    'ylgnbu'   : YlGnBu,
+    'gnbu'     : GnBu,
+    'bugn'     : BuGn,
+    'pubugn'   : PuBuGn,
+    'pubu'     : PuBu,
+    'bupu'     : BuPu,
+    'rdpu'     : RdPu,
+    'purd'     : PuRd,
+    'orrd'     : OrRd,
+    'ylorrd'   : YlOrRd,
+    'ylorbr'   : YlOrBr,
+    'purples'  : Purples,
+    'blues'    : Blues,
+    'greens'   : Greens,
+    'oranges'  : Oranges,
+    'reds'     : Reds,
+    'greys'    : Greys,
+    'puor'     : PuOr,
+    'brbg'     : BrBG,
+    'prgn'     : PRGn,
+    'piyg'     : PiYG,
+    'rdbu'     : RdBu,
+    'rdgy'     : RdGy,
+    'rdylbu'   : RdYlBu,
+    'spectral' : Spectral,
+    'rdylgn'   : RdYlGn,
+    'accent'   : Accent,
+    'dark2'    : Dark2,
+    'paired'   : Paired,
+    'pastel1'  : Pastel1,
+    'pastel2'  : Pastel2,
+    'set1'     : Set1,
+    'set2'     : Set2,
+    'set3'     : Set3,
 }
 
 d3 = {
-    'Category10'  : Category10,
-    'Category20'  : Category20,
-    'Category20b' : Category20b,
-    'Category20c' : Category20c,
+    'category10'  : Category10,
+    'category20'  : Category20,
+    'category20b' : Category20b,
+    'category20c' : Category20c,
 }
 
 mpl = {
-    'Magma'   : Magma,
-    'Inferno' : Inferno,
-    'Plasma'  : Plasma,
-    'Viridis' : Viridis,
-    'Cividis' : Cividis,
+    'magma'   : Magma,
+    'inferno' : Inferno,
+    'plasma'  : Plasma,
+    'viridis' : Viridis,
+    'cividis' : Cividis,
 }
 
 tol = {
-    'Bright': Bright,
-    'HighContrast': HighContrast,
-    'Vibrant': Vibrant,
-    'Muted': Muted,
-    'MediumContrast': MediumContrast,
-    'Light': Light,
-    'Sunset': Sunset,
-    'BuRd': BuRd,
-    'TolPRGn': TolPRGn,
-    'TolYlOrBr': TolYlOrBr,
-    'Iridescent': Iridescent,
-    'TolRainbow': TolRainbow,
+    'bright': Bright,
+    'highcontrast': HighContrast,
+    'vibrant': Vibrant,
+    'muted': Muted,
+    'mediumcontrast': MediumContrast,
+    'light': Light,
+    'sunset': Sunset,
+    'burd': BuRd,
+    'tolprgn': TolPRGn,
+    'tolylorbr': TolYlOrBr,
+    'iridescent': Iridescent,
+    'tolrainbow': TolRainbow,
 }
 
 colorblind = {
-    'Colorblind' : Colorblind,
+    'colorblind' : Colorblind,
 }
 
 all_palettes = deepcopy(brewer)
 all_palettes.update(d3)
 all_palettes.update(tol)
-all_palettes['Colorblind'] = Colorblind
-all_palettes['Magma']      = Magma
-all_palettes['Inferno']    = Inferno
-all_palettes['Plasma']     = Plasma
-all_palettes['Viridis']    = Viridis
-all_palettes['Cividis']    = Cividis
-all_palettes['Turbo']      = Turbo
+all_palettes['colorblind'] = Colorblind
+all_palettes['magma']      = Magma
+all_palettes['inferno']    = Inferno
+all_palettes['plasma']     = Plasma
+all_palettes['viridis']    = Viridis
+all_palettes['cividis']    = Cividis
+all_palettes['turbo']      = Turbo
 
 small_palettes = deepcopy(all_palettes)
-del small_palettes['Greys'][256]
-del small_palettes['Magma'][256]
-del small_palettes['Inferno'][256]
-del small_palettes['Plasma'][256]
-del small_palettes['Viridis'][256]
-del small_palettes['Cividis'][256]
-del small_palettes['Turbo'][256]
+del small_palettes['greys'][256]
+del small_palettes['magma'][256]
+del small_palettes['inferno'][256]
+del small_palettes['plasma'][256]
+del small_palettes['viridis'][256]
+del small_palettes['cividis'][256]
+del small_palettes['turbo'][256]
+
+
+def to_matplotlib(palette: palette) -> Colormap:
+    from matplotlib.colors import ListedColormap
+    return ListedColormap(palette)
+
 
 def linear_palette(palette: palette, n: int) -> palette:
     '''
@@ -1598,6 +1616,7 @@ def varying_alpha_palette(
 
     return palette
 
+
 def interp_palette(palette: palette, n: int) -> palette:
     
     npalette = len(palette)
@@ -1636,6 +1655,31 @@ def cividis(n: int) -> palette:
 def turbo(n: int) -> palette:
     return linear_palette(Turbo256, n)
 
+def cmdiv_wyj(n: int) -> palette:
+    return interp_palette(palette((
+        rgb_color(78, 42, 135).to_hex(),
+        rgb_color(162, 184, 198).to_hex(),
+        rgb_color(176, 114, 103).to_hex(),
+        rgb_color(143, 11, 9).to_hex()
+    )), n = n)
+
+def awared_darken(c: rgb_color, lighten = 0.3, saturate = 0.4):
+    grayscale = 0.30 * c.r + 0.59 + c.g + 0.11 * c.b
+    darken = (max(0, grayscale - 45) / 255.0) * 0.40
+    return c.darken(darken).lighten(lighten).saturate(saturate)
+
+def moddark(n: int) -> palette:
+    return interp_palette(palette([
+        awared_darken(rgb_color.from_hex_string(c), 0.1, 0.9).to_hex() 
+        for c in turbo(n)
+    ]), n = n)
+
+def modlight(n: int) -> palette:
+    return interp_palette(palette([
+        awared_darken(rgb_color.from_hex_string(c), 0.4, 0.5).to_hex() 
+        for c in turbo(n)
+    ]), n = n)
+
 def grey(n: int) -> palette:
     return linear_palette(Greys256, n)
 
@@ -1643,11 +1687,87 @@ def gray(n: int) -> palette:
     return linear_palette(Greys256, n)
 
 
+def plot_colormap(p: palette, ax = None, figsize = (2, 2), dpi = 100, title = None):
+    rgba_array = to_rgba_array(p)
+
+    import matplotlib.pyplot as plt
+    if ax is None: fig, ax = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+    else: fig = ax.figure
+
+    cs = []; xs = []; ys = []
+    for i, rgb in enumerate(rgba_array):
+        col = rgb_color(rgb[0], rgb[1], rgb[2]).to_hex()
+        cs.append(col)
+        xs.append(i)
+        ys.append(0.3 * rgb[0] / 255 + 0.59 * rgb[1] / 255 + 0.11 * rgb[2] / 255)
+    
+    ax.scatter(xs, ys, c = cs, s = 120)
+    ax.set_ylim((0, 1))
+    ax.set_xlim((-1, len(cs)))
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if title: ax.set_xlabel(title)
+    return fig
+
+
+def demo_colormap(ncols = 6, dpi = 100):
+
+    import matplotlib.pyplot as plt
+    n_features = len(all_palettes)
+    nrows = n_features // ncols
+    if n_features % ncols != 0: nrows += 1
+    fig, axes = plt.subplots(nrows, ncols, dpi = dpi, figsize = (ncols * 1.45, nrows * 1.6))
+
+    for i, feat in enumerate(list(all_palettes.keys())):
+        if len(axes.shape) == 2:
+            plot_colormap(
+                get_palette(feat, 256), 
+                axes[i // ncols, i % ncols], 
+                title = feat
+            )
+        elif len(axes.shape) == 1:
+            plot_colormap(get_palette(feat, 256), axes[i], title = feat)
+    
+    for icol in range(ncols):
+        for irow in range(nrows):
+            if len(axes.shape) == 2:
+                axes[irow, icol].set_xticks([])
+                axes[irow, icol].set_yticks([])
+            else: 
+                axes[icol].set_xticks([])
+                axes[icol].set_yticks([])
+    
+    fig.tight_layout()
+    return fig
+
+
 def to_rgba_array(palette: palette):
     rgba_array = np.empty((len(palette), 4), dtype=np.uint8)
 
     for i, color in enumerate(palette):
         rgba = named_color.from_string(color)
-        rgba_array[i] = (rgba.r, rgba.g, rgba.b, rgba.a*255)
+        rgba_array[i] = (rgba.r, rgba.g, rgba.b, rgba.a * 255)
 
     return rgba_array
+
+
+def get_palette_tuple(name, n):
+    
+    if name not in all_palettes.keys():
+        error(f'can not find a palette named `{name}`.')
+    
+    if isinstance(all_palettes[name], dict):
+        if n in all_palettes[name].keys():
+            return all_palettes[name][n]
+        else: return interp_palette(all_palettes[name][list(all_palettes[name].keys())[-1]], n)
+    else: return interp_palette(all_palettes[name], n)
+
+
+def get_palette(name, n):
+    return list(get_palette_tuple(name, n))
+
+# custom palettes
+all_palettes['cmdiv_wyj']  = cmdiv_wyj(256)
+all_palettes['modlight']   = modlight(256)
+all_palettes['moddark']    = moddark(256)

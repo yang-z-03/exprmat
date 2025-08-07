@@ -71,6 +71,7 @@ def line(
     xticklabels = None, yticklabels = None, 
     xrange = None, yrange = None,
     title = None, ax = None,
+    hlines = None,
     figsize = (3, 3), dpi = 100
 ):
     if ax is not None: fig, axis = ax.figure, ax
@@ -83,6 +84,9 @@ def line(
         color = 'black',
         linestyle = 'solid'
     )
+
+    if hlines:
+        axis.hlines(hlines, 0, 800)
 
     if xlabel: axis.set_xlabel(xlabel, loc = 'center', linespacing = 1.5)
     if ylabel: axis.set_ylabel(ylabel, loc = 'center', linespacing = 1.5)
@@ -103,6 +107,44 @@ def line(
         if yticklabels: axis.set_yticklabels(yticklabels)
     
     return fig
+
+
+def hist(
+    x, xscale = lambda z: z, bins = 100, 
+    xticks = None, yticks = None, 
+    xlabel = None, ylabel = None,
+    xticklabels = None, yticklabels = None, 
+    xrange = None, yrange = None,
+    title = None, ax = None,
+    figsize = (3, 3), dpi = 100
+):
+    if ax is not None: fig, axis = ax.figure, ax
+    else: fig, axis = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
+
+    axis.hist(
+        xscale(x), 
+        bins = bins,
+        linewidth = 1,
+        color = 'black',
+        linestyle = 'solid'
+    )
+
+    if xlabel: axis.set_xlabel(xlabel, loc = 'center', linespacing = 1.5)
+    if ylabel: axis.set_ylabel(ylabel, loc = 'center', linespacing = 1.5)
+
+    for pos in ['right', 'top']:
+        axis.spines[pos].set_visible(False)
+
+    if title: axis.set_title(title)
+    if xrange: axis.set_xlim(xrange)
+    if yrange: axis.set_ylim(yrange)
+
+    if xticks: 
+        axis.set_xticks([xscale(z) for z in xticks])
+        if xticklabels: axis.set_xticklabels(xticklabels)
+
+    return fig
+
 
 
 def stair(

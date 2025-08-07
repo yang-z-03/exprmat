@@ -133,6 +133,24 @@ def compare_scatter(
     mean_x = np.array(x.mean(axis = 0))[0]
     mean_y = np.array(y.mean(axis = 0))[0]
     varn = adata.var['gene'].tolist()
+
+    show_text = True
+    if isinstance(markers, str):
+        import exprmat.reader.static as st
+        
+        df1 = st.rna_get_markers(
+            adata, None, de_slot = markers, max_q = 0.05, min_pct = 0, max_pct_reference = 1,
+            min_lfc = -100, max_lfc = -0.5
+        )
+
+        df2 = st.rna_get_markers(
+            adata, None, de_slot = markers, max_q = 0.05, min_pct = 0, max_pct_reference = 1,
+            min_lfc = 0.5, max_lfc = 100
+        )
+
+        markers = df1['gene'].tolist() + df2['gene'].tolist()
+        show_text = False
+    
     ann = ['annot' if x in markers else 'bg' for x in varn]
 
     if ax is None: fig, axes = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
@@ -151,7 +169,7 @@ def compare_scatter(
 
     for x, y, name in zip(mean_x, mean_y, varn):
         if name in markers:
-            plt.text(x = x, y = y, s = name, fontsize = 9, color = 'black')
+            if show_text: plt.text(x = x, y = y, s = name, fontsize = 9, color = 'black')
 
     if ax is None: return fig
     else: return axes.figure
@@ -196,7 +214,7 @@ def volcano(
 
     if isinstance(de_slot, str):
         plots = st.rna_get_markers(
-            adata, de_slot = de_slot,
+            adata, None, de_slot = de_slot,
             min_pct = min_pct, max_pct_reference = max_pct_reference, 
             min_lfc = min_lfc, max_lfc = max_lfc, 
             remove_zero_pval = remove_zero_pval
@@ -230,7 +248,7 @@ def volcano(
     for p, f, nm in zip(sig_pvals, sig_fc, sig_names):
         texts += [axes.text(f, p, nm, va = 'top', ha = 'center')]
 
-    adjust_text(texts)
+    # adjust_text(texts)
     axes.scatter(sig_fc, sig_pvals, c = 'r', s = 10)
     axes.grid(False)
 

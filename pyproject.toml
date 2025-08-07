@@ -9,7 +9,9 @@ module-name = "exprmat.snapatac"
 manifest-path = "snapatac2/Cargo.toml"
 exclude = [
     "exprmat/data/tools/**/*",
-    "exprmat/data/tools/*"
+    "exprmat/data/tools/*",
+    "exprmat/peaks/idr/invcdf.c",
+    "exprmat/peaks/idr/*.so"
 ]
 
 [project]
@@ -18,7 +20,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.35"
+version = "0.1.37"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -42,8 +44,8 @@ dependencies = [
     'pyarrow',
     'pyfaidx >= 0.7.0, < 0.8.0',
     'rustworkx',
-    'scipy >= 1.4, < 2.0.0',
-    'scikit-learn >= 1.0, < 2.0.0',
+    'scipy >= 1.11, < 2.0.0',
+    'scikit-learn >= 1.1, < 2.0.0',
     'tqdm >= 4.62',
     'typeguard >= 4.0',
     'umap-learn >= 0.5.0',
@@ -81,6 +83,7 @@ dependencies = [
     'graphtools',
     'bincsync >= 0.3.0',
     'pyBigWig',
+    'pyBedGraph',
     'loompy',
     'squidpy',
     'zarr',
@@ -93,7 +96,13 @@ dependencies = [
     'pyogrio >= 0.7.2',
     'pyproj >= 3.3.0',
     'geopandas',
-    'packaging'
+    'packaging',
+    'lightmotif',
+    'pymemesuite',
+    'formulaic >= 1.0.2',
+    'formulaic-contrasts >= 0.2.0',
+    'Cython',
+    'pyfastx'
 ]
 
 [project.optional-dependencies]

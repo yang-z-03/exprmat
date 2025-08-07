@@ -60,7 +60,7 @@ def embedding_atlas(
     adata, basis, color,
     hue_order = None,
     title = None, figsize = (4, 4), ax = None,
-    cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
+    cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
     legend = True, legend_loc = 'right margin', legend_col = 1, 
     frameon = 'small', fontsize = 10,
     annotate = True, annotate_style = 'index', annot_size = 12,
@@ -119,9 +119,8 @@ def embedding_atlas(
         original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
         hue_order = original_cat if hue_order is None else hue_order
         
-        default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+        default_palette = palettes.get_palette(cmap, len(adata.obs[color].cat.categories)) \
+            if isinstance(cmap, str) else cmap
 
         if f'{color}.colors' not in adata.uns.keys():
             adata.uns[f'{color}.colors'] = default_palette
@@ -209,9 +208,7 @@ def embedding_atlas(
         agg = cvs.points(df, 'x', 'y', ds.mean('label'))
         legend_tag = False
 
-        cmap = list(palettes.interp_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], 256)) if isinstance(cmap, str) else cmap
+        cmap = palettes.get_palette(cmap, 256) if isinstance(cmap, str) else cmap
 
         if cmap_reverse:
             cmap = cmap[::-1]
@@ -298,7 +295,7 @@ def embedding(
     hue_order = None,
     default_color = 'black',
     alpha = 0.8,
-    # palette = 'Turbo',
+    # palette = 'turbo',
     rasterize = True,
     sort = True,
 
@@ -328,7 +325,7 @@ def embedding(
     outline_margin = 20,
 
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
-    cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
+    cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
     hue_norm = None, 
     ticks = False,
     frameon = 'small',
@@ -405,9 +402,8 @@ def embedding(
         
         if cmap is not None:
             
-            default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
-                list(palettes.all_palettes[cmap].keys())[-1]
-            ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+            default_palette = palettes.get_palette(cmap, len(adata.obs[color].cat.categories)) \
+                if isinstance(cmap, str) else cmap
 
             if f'{color}.colors' not in adata.uns.keys():
                 adata.uns[f'{color}.colors'] = default_palette
@@ -518,9 +514,7 @@ def embedding(
          (type(labels[0]) is np.float64) or \
          (type(labels[0]) is np.uint32):
         
-        cmap = list(palettes.interp_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], 256)) if isinstance(cmap, str) else cmap
+        cmap = palettes.get_palette(cmap, 256) if isinstance(cmap, str) else cmap
 
         if cmap_reverse:
             cmap = cmap[::-1]
@@ -614,7 +608,7 @@ def gene_gene(
     hue_order = None,
     default_color = 'black',
     alpha = 0.8,
-    # palette = 'Turbo',
+    # palette = 'turbo',
     rasterize = True,
     sort = True,
 
@@ -641,7 +635,7 @@ def gene_gene(
     outline_color = 'black',
 
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
-    cmap = 'Turbo', cmap_reverse = False, cmap_lower = '#000000',
+    cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
     legend_loc = 'right margin', frameon = 'small', fontsize = 9,
 
     remove_zero_expression = False,
@@ -721,9 +715,8 @@ def gene_gene(
             original_cat = sorted(original_cat, key = lambda s: s.zfill(8) if str.isdigit(s) else s)
             hue_order = original_cat if hue_order is None else hue_order
 
-            default_palette = list(palettes.linear_palette(palettes.all_palettes[cmap][
-                list(palettes.all_palettes[cmap].keys())[-1]
-            ], len(adata.obs[color].cat.categories))) if isinstance(cmap, str) else cmap
+            default_palette = palettes.get_palette(cmap, len(adata.obs[color].cat.categories)) \
+                if isinstance(cmap, str) else cmap
 
             if f'{color}.colors' not in adata.uns.keys():
                 adata.uns[f'{color}.colors'] = default_palette
@@ -804,9 +797,7 @@ def gene_gene(
          (type(labels[0]) is np.float64) or \
          (type(labels[0]) is np.int):
         
-        cmap = list(palettes.interp_palette(palettes.all_palettes[cmap][
-            list(palettes.all_palettes[cmap].keys())[-1]
-        ], 256)) if isinstance(cmap, str) else cmap
+        cmap = palettes.get_palette(cmap, 256) if isinstance(cmap, str) else cmap
 
         if cmap_reverse:
             cmap = cmap[::-1]

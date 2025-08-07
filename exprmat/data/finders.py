@@ -75,6 +75,43 @@ def get_genome_model(assembly):
     return pandas.read_feather(path)
 
 
+def get_genome_ranges(assembly, fname, as_grange = False):
+    
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), f'{fname}.feather')
+    feather = pandas.read_feather(path)
+    
+    if as_grange: 
+        import genomicranges
+        return genomicranges.GenomicRanges.from_pandas(
+            feather[['ucsc', 'start', 'end', 'strand', 'gene']].rename(
+            columns = {'ucsc': 'seqnames', 'start': 'starts', 'end': 'ends'}
+        ))
+    else: return feather
+
+
+def get_genome_first_exonic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'first-exonic', as_grange = as_grange)
+
+def get_genome_other_exonic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'other-exonic', as_grange = as_grange)
+
+def get_genome_first_intronic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'first-intronic', as_grange = as_grange)
+
+def get_genome_transcript(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'genebody', as_grange = as_grange)
+
+def get_genome_promoters(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'promoters', as_grange = as_grange)
+
+def get_genome_utr3(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'utr3', as_grange = as_grange)
+
+def get_genome_utr5(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'utr5', as_grange = as_grange)
+
+
 def get_mapper_name(taxa):
     '''
     Return a name mapper mapping from gene names to universal gene id across species.

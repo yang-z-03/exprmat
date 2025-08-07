@@ -26,7 +26,7 @@ def check_data_matches_labels(labels, data, side):
 def sankey(
     left, right, left_weights = None, right_weights = None, 
     colors = None, left_labels = None, right_labels = None, 
-    aspect = 4, right_colors = False, cmap = 'Turbo',
+    aspect = 4, right_colors = False, cmap = 'turbo',
     fontsize = 9, figsize = (4, 4), ax = None
 ):
     

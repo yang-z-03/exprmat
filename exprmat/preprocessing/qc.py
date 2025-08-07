@@ -150,16 +150,19 @@ def rna_qc(
     subset = adata[f_obs, f_var].copy()
     subset.obs['qc'] = True
     
+    doublet_failed = False
     if doublet_method == 'scrublet':
-        scrublet_init(subset, random_state = 42)
-        scrublet(subset)
+        try:
+            scrublet_init(subset, random_state = 42)
+            scrublet(subset)
+        except: doublet_failed = True
     
     adata.obs['filter'] = f_obs
     adata.obs['score.doublet'] = 0.0
     adata.obs['score.doublet.se'] = 0.0
     adata.obs['is.doublet'] = False
 
-    if doublet_method == 'scrublet':
+    if (doublet_method == 'scrublet') and (not doublet_failed):
         adata.obs.loc[subset.obs['score.doublet'].index, 'score.doublet'] = \
             subset.obs['score.doublet']
         adata.obs.loc[subset.obs['score.doublet.se'].index, 'score.doublet.se'] = \

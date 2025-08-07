@@ -462,6 +462,67 @@ def read_h5ad_rna(
     return final
 
 
+def convert_to_ugene(gname, taxa):
+    
+    # map gene naming
+    names = []
+    gmask = []
+
+    # here, we just add another condition to test whether the gname list is appropriate
+    # ensembl format. if it is not, we try to map genes directly onto the names.
+    # though i specify the var_names should be 'gene_ids', it may occur exceptions
+    # where there are man-made references containing two or more species. by convention
+    # in these double species reference, the 'gene_ids' should be 'mm10_ENSMUSG...'
+    # or just name of the genes.
+
+    default_finder_ens = get_mapper_ensembl(taxa)
+    default_finder_name = get_mapper_name(taxa)
+    not_in_list = []
+
+    for x in gname:
+
+        if '_' in x:
+
+            reference_name = x.split('_')[0]
+            pure_nm = x.replace(reference_name + '_', '')
+
+            if not reference_name.lower() in cfg['taxa.reference'].keys():
+                warning(f'gene {x} seems to have a reference prefix, but not registered to taxa.')
+                gmask.append(False)
+                not_in_list.append(x)
+                continue
+
+            reference_taxa = cfg['taxa.reference'][reference_name.lower()]
+            alt_finder_name = get_mapper_name(reference_taxa)
+            alt_finder_ens = get_mapper_ensembl(reference_taxa)
+
+            if pure_nm in alt_finder_ens.keys():
+                gmask.append(True)
+                names.append(alt_finder_ens[pure_nm])
+                continue
+            
+            if pure_nm in alt_finder_name.keys():
+                gmask.append(True)
+                names.append(alt_finder_name[pure_nm])
+                continue
+        
+        if x in default_finder_ens.keys():
+            gmask.append(True)
+            names.append(default_finder_ens[x])
+            continue
+        
+        if x in default_finder_name.keys():
+            gmask.append(True)
+            names.append(default_finder_name[x])
+            continue
+            
+        gmask.append(False)
+        not_in_list.append(x)
+
+    names = ['rna:' + x for x in names]
+    return names, gmask, not_in_list
+
+
 def match_matrix_rna(
     adata, metadata: metadata, sample: str, 
     force_filter = False, default_taxa = 'mmu',

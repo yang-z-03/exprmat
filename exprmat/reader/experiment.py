@@ -67,6 +67,17 @@ class experiment:
             table['modality'], table['taxa']
         ):
             
+            # extension of taxa: you can specify a specific version of the genome
+            # assembly when specifying taxa. leaving it out allows exprmat to choose
+            # the assembly (the latest version) automatically.
+
+            # e.g.
+            #    mmu            = 'grcm39'
+            #    mmu/grcm38     = 'grcm38'
+
+            if '/' in i_taxa: i_taxa, i_assembly = i_taxa.split('/')
+            else: i_assembly = cfg['default.assembly'][i_taxa]
+            
             info(f'reading sample {i_sample} [{i_mod}] ...')
 
             attempt_path = os.path.join(dump, i_mod, i_sample + '.h5ad')
@@ -161,7 +172,7 @@ class experiment:
                     os.path.join(self.directory, 'tcr', i_sample + '.tsv.gz'), 
                     sep = '\t', index = False
                 )
-
+            
             elif i_mod == 'rnasp-c':
                 
                 if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
@@ -218,7 +229,7 @@ class experiment:
             elif i_mod == 'atac':
                 
                 if not 'atac' in self.modalities.keys(): self.modalities['atac'] = {}
-                default_assembly = cfg['default.assembly'][i_taxa]
+                default_assembly = i_assembly
 
                 from exprmat.reader.peaks import import_fragments
                 frags = import_fragments(
@@ -232,7 +243,153 @@ class experiment:
                 # assigning bins to the vars.
                 self.modalities['atac'][i_sample] = frags
 
+            elif i_mod in ['rna-bulk', 'atac-bulk']:
+                
+                # samples ended up with '-bulk' suffix will be processed into one
+                # predefined anndata named 'bulk' in the corresoponding modality.
+                # note that samples with different taxa property cannot be analysed together.
+                
+                pass
+
             else: warning(f'sample {i_sample} have no supported modalities')
+
+
+        # attaching bulk datasets.
+
+        for i_mod in ['rna-bulk', 'atac-bulk']:
+            
+            meta = self.metadata.dataframe.loc[
+                self.metadata.dataframe['modality'] == i_mod, :
+            ]
+
+            if len(meta) == 0: continue
+
+            if i_mod == 'rna-bulk':
+
+                # bulk rna sequencing accepts expression matrices based on raw
+                # counts (we recommend raw counts over any processed forms)
+                # however, if normalized forms are only available, you may provide them.
+
+                # it accepts generally any form of table, where the first row
+                # contains gene names, and contains a row matched to sample name.
+
+                datatable = []
+                datarows = []
+                example_row = None
+
+                for sid in range(len(meta)):
+
+                    prop = meta.iloc[sid]
+
+                    if '/' in prop['taxa']: i_taxa, i_assembly = prop['taxa'].split('/')
+                    else:
+                        i_taxa = prop['taxa'] 
+                        i_assembly = cfg['default.assembly'][i_taxa]
+
+                    from exprmat.reader.matcher import convert_to_ugene
+                    from exprmat.reader.spatial import read_table_from_extension
+
+                    pdf = read_table_from_extension(prop['location'])
+                    sampdf = pdf[[pdf.columns[0], prop['sample']]].set_index(pdf.columns[0])
+
+                    names, gmask, notinlist = convert_to_ugene(sampdf.index.tolist(), i_taxa)
+                    info(f'{len(notinlist)} unmatched genes from {len(sampdf)} rows.')
+                    sampdf = sampdf.loc[gmask, :].copy()
+                    sampdf.index = names
+                    sampdf = sampdf.loc[~sampdf.index.duplicated(), :].copy()
+                    datatable += [sampdf]
+                    datarows += [pd.DataFrame(prop.copy()).T]
+                    example_row = prop.copy()
+                
+                if len(datatable) == 1: datatable = datatable[0]
+                elif len(datatable) == 2: datatable = datatable[0].join(datatable[1])
+                else: datatable = datatable[0].join(datatable[1:])
+
+                datarows = pd.concat(datarows)
+                datarows.index = datatable.columns.tolist()
+
+                # initialize anndata.
+                adata = ad.AnnData(X = datatable.T, obs = datarows)
+                adata.var = st.search_genes(adata.var_names.tolist())
+                adata.obs_names = 'bulk-rna:' + adata.obs_names
+                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
+                self.modalities['rna']['bulk-rna'] = adata
+
+                # replace metadata
+                example_row['sample'] = 'bulk-rna'
+                example_row['location'] = ':/rna/bulk-rna'
+                example_row['group'] = '.'
+                example_row['taxa'] = '.'
+                example_row['modality'] = 'rna'
+                example_row['batch'] = 'autogen'
+
+                self.metadata.dataframe = self.metadata.dataframe.loc[
+                    self.metadata.dataframe['modality'] != 'rna-bulk', :
+                ].copy()
+                self.metadata.insert_row(example_row)
+            
+
+            elif i_mod == 'atac-bulk':
+
+                # bulk atac seq accepts bams as input.
+                # if no bam files accessible, a bedgraph file can be supplied as an alternative
+                # but several features (e.g. cut site identification) rely on raw fragments
+                # and cannot be applied then.
+
+                datarows = []
+                if len(meta['taxa'].unique()) != 1:
+                    error('failed to merge atac experiments with different reference.')
+                
+                i_taxa = meta['taxa'].unique().tolist()[0]
+                if '/' in i_taxa: i_taxa, i_assembly = i_taxa.split('/')
+                else: i_assembly = cfg['default.assembly'][i_taxa]
+
+                example_row = None
+                for sid in range(len(meta)):
+
+                    prop = meta.iloc[sid].copy()
+
+                    if prop['location'].endswith('.bampe'):
+                        prop['bam'] = prop['location']
+                    elif prop['location'].endswith('.bam'):
+                        prop['bam'] = prop['location']
+                    else: prop['bam'] = ''
+
+                    if prop['location'].endswith('.bdg'):
+                        prop['bedgraph'] = prop['location']
+                    else: prop['bedgraph'] = ''
+
+                    datarows += [pd.DataFrame(prop).T]
+                    example_row = prop.copy()
+                
+                datarows = pd.concat(datarows)
+                datarows.index = 'bulk-atac:' + datarows['sample']
+                datarows.index.name = None
+                from scipy.sparse import csr_matrix
+                adata = ad.AnnData(
+                    X = csr_matrix((len(datarows), 0), dtype = np.float32), 
+                    obs = datarows
+                )
+
+                adata.uns['assembly'] = i_assembly
+                from exprmat.data.finders import get_genome_size
+                adata.uns['assembly.size'] = get_genome_size(i_assembly)
+
+                if not 'atac' in self.modalities.keys(): self.modalities['atac'] = {}
+                self.modalities['atac']['bulk-atac'] = adata
+
+                # replace metadata
+                example_row['sample'] = 'bulk-atac'
+                example_row['location'] = ':/rna/bulk-atac'
+                example_row['group'] = '.'
+                example_row['taxa'] = '.'
+                example_row['modality'] = 'atac'
+                example_row['batch'] = 'autogen'
+
+                self.metadata.dataframe = self.metadata.dataframe.loc[
+                    self.metadata.dataframe['modality'] != 'atac-bulk', :
+                ].copy()
+                self.metadata.insert_row(example_row)
 
         pass
 
@@ -256,7 +413,6 @@ class experiment:
         return (self.mudata.n_obs, self.mudata.n_vars)
     
     
-
     def merge(
         self, join = 'outer', obsms = [], variable_columns = [],
         bool_merge_behavior = 'or',
@@ -667,10 +823,10 @@ class experiment:
         return self.do_for_modality('atac', run_on_samples, func, **kwargs)
     
     def do_for_atac_peaks(self, run_on_samples, func, **kwargs):
-        return self.do_for_modality('atac.cp', run_on_samples, func, **kwargs)
+        return self.do_for_modality('atac-p', run_on_samples, func, **kwargs)
     
     def do_for_atac_gene_activity(self, run_on_samples, func, **kwargs):
-        return self.do_for_modality('atac.g', run_on_samples, func, **kwargs)
+        return self.do_for_modality('atac-g', run_on_samples, func, **kwargs)
     
     def do_for_rnaspc(self, run_on_samples, func, **kwargs):
         return self.do_for_modality('rnasp-c', run_on_samples, func, **kwargs)
@@ -758,7 +914,7 @@ class experiment:
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
         return self.plot_for_modality(
-            'atac.cp', run_on_samples, func, 
+            'atac-p', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
 
@@ -767,7 +923,7 @@ class experiment:
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
         return self.plot_for_modality(
-            'atac.g', run_on_samples, func, 
+            'atac-g', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
     
@@ -1111,7 +1267,7 @@ class experiment:
         self.mudata[slot].obs[into] = self.mudata[slot].obs[into].astype('category')
         print(self.mudata[slot].obs[into].value_counts())
 
-
+    
     # wrapper functions
 
     def run_rna_qc(self, run_on_samples = False, **kwargs):
@@ -1119,7 +1275,24 @@ class experiment:
         
     def run_rna_filter(self, run_on_samples = False):
         results = self.do_for_rna(run_on_samples, st.rna_filter)
-        self.modalities['rna'] = results
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
+    def run_rna_filter_row_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_rna(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
+    def run_rna_filter_column_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_rna(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
 
     def run_rna_log_normalize(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_log_normalize, **kwargs)
@@ -1148,7 +1321,6 @@ class experiment:
     def run_rna_mde_fit(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_mde_fit, **kwargs)
 
-
     def run_rna_integrate(self, method = 'harmony', dest = 'harmony', **kwargs):
         
         self.check_merged('rna')
@@ -1162,9 +1334,11 @@ class experiment:
 
         else: error(f'unsupported integration method `{method}`.')
 
-
     def run_rna_markers(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_markers, **kwargs)
+
+    def run_rna_markers_deseq(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_markers_deseq, **kwargs)
 
     def run_rna_kde(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_kde, **kwargs)
@@ -1180,7 +1354,7 @@ class experiment:
         return self.do_for_rna(run_on_samples, st.rna_proportion, **kwargs)
     
     def run_rna_infercnv(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_infercnv, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_infercnv, **kwargs)
     
     def run_rna_summary(self, run_on_samples = False, **kwargs):
         return self.do_for_rna(run_on_samples, st.rna_summary, **kwargs)
@@ -1189,39 +1363,39 @@ class experiment:
         return self.do_for_rna(run_on_samples, st.rna_aggregate, **kwargs)
     
     def run_rna_attach_tcr(self, run_on_samples = False):
-        return self.do_for_rna(
+        self.do_for_rna(
             run_on_samples, 
             st.rna_attach_tcr, 
             searchdir = os.path.join(self.directory, 'tcr')
         )
 
     def run_rna_calculate_tcr_metrics(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_calculate_tcr_metrics, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_calculate_tcr_metrics, **kwargs)
     
     def run_rna_aggregate_tcr_by_identity(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_aggregate_tcr_by_identity, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_aggregate_tcr_by_identity, **kwargs)
     
     def run_rna_calculate_startracs_metrics(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_calculate_startracs_metrics, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_calculate_startracs_metrics, **kwargs)
     
     def run_rna_calculate_startracs_pairwise_metrics(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_calculate_startracs_pairwise_metrics, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_calculate_startracs_pairwise_metrics, **kwargs)
     
     def run_rna_expression_mask(
         self, run_on_samples = False, gene = None, key = 'mask', 
         lognorm = 'X', threshold = 0.1, negate = False
     ):
-        return self.do_for_rna(
+        self.do_for_rna(
             run_on_samples, st.rna_expression_mask, 
             gene = gene, key = key, lognorm = lognorm, threshold = threshold,
             negate = negate
         )
     
     def run_rna_gsea(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_gsea, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_gsea, **kwargs)
     
     def run_rna_opa(self, run_on_samples = False, **kwargs):
-        return self.do_for_rna(run_on_samples, st.rna_opa, **kwargs)
+        self.do_for_rna(run_on_samples, st.rna_opa, **kwargs)
     
     def run_rna_gsva(self, run_on_samples = False, key_added = 'gsva', **kwargs):
         gsv = self.do_for_rna(run_on_samples, st.rna_gsva, **kwargs)
@@ -1229,7 +1403,6 @@ class experiment:
             gsv.var['gset'] = gsv.var_names.tolist()
             gsv.var_names = [key_added + ':' + str(i + 1) for i in range(gsv.n_vars)]
             self.mudata.mod[key_added] = gsv
-        
         return gsv
     
     def run_rna_remove_slots(self, run_on_samples = False, slot = 'obs', names = []):
@@ -1262,6 +1435,8 @@ class experiment:
         self.do_for_rna(run_on_samples, st.rna_impute_magic, **kwargs) 
     
     def run_atac_make_bins(self, run_on_samples = False, **kwargs):
+        # bins can be made directly from bedgraph files if there is no alignment bam provided.
+        # thus these samples can be used for clustering.
         self.do_for_atac(run_on_samples, st.atac_make_bins, **kwargs)
     
     def run_atac_filter_cells(self, run_on_samples = False, **kwargs):
@@ -1289,36 +1464,123 @@ class experiment:
         self.do_for_atac(run_on_samples, st.rna_leiden_subcluster, **kwargs)
     
     def run_atac_infer_gene_activity(self, run_on_samples = False, **kwargs):
-        
+        # inference on gene activity provides two alternative way. one from bam files
+        # in the fragment matrix, and another from bedgraph counting.
+        # more efficiently, should count on bigwig files.
+
         if not run_on_samples:
             if 'atac.g' in self.mudata.mod.keys():
                 warning('atac.g modality exists in the mudata object. the run is cancelled to prevent overwrite.')
                 error('if you want to overwrite existing modality, you should delete it manually first.')
 
         data = self.do_for_atac(run_on_samples, st.atac_infer_gene_activity, **kwargs)
-        if run_on_samples:
-            self.modalities['atac.g'] = data
+        if isinstance(data, dict):
+            for sampkey in data.keys():
+                prop = self.metadata.dataframe.loc[
+                    (self.metadata.dataframe['sample'] == sampkey) &
+                    (self.metadata.dataframe['modality'] == 'atac'), :
+                ]
 
-            # create artificial samples
-            added_samples = self.metadata.dataframe.loc[self.metadata.dataframe['modality'] == 'atac', :].copy()
-            added_samples = added_samples.loc[[x in data.keys() for x in added_samples['sample']], :].copy()
-            added_samples['modality'] = 'atac.g'
-            added_samples['location'] = '-'
-            self.metadata.dataframe = pd.concat(
-                self.metadata.dataframe,
-                added_samples
-            )
+                assert len(prop) == 1
+                prop = prop.iloc[0, :].copy()
+                prop['modality'] = 'atac-g'
+                if not 'atac-g' in self.modalities.keys():
+                    self.modalities['atac-g'] = {}
+                
+                self.modalities['atac-g'][sampkey] = data[sampkey]
+                self.metadata.insert_row(prop)
         
         else: self.mudata.mod['atac.g'] = data
+
+    def run_atac_call_peaks(self, run_on_samples = False, **kwargs):
+        self.do_for_atac(run_on_samples, st.atac_call_peaks, **kwargs)
+
+    def run_atac_merge_peaks(self, run_on_samples = False, **kwargs):
+        self.do_for_atac(run_on_samples, st.atac_merge_peaks, **kwargs)
+
+    def run_atac_make_peak_matrix(self, run_on_samples = False, **kwargs):
+        peak_matrix = self.do_for_atac(run_on_samples, st.atac_make_peak_matrix, **kwargs)
+        if isinstance(peak_matrix, dict):
+            for sampkey in peak_matrix.keys():
+                prop = self.metadata.dataframe.loc[
+                    (self.metadata.dataframe['sample'] == sampkey) &
+                    (self.metadata.dataframe['modality'] == 'atac'), :
+                ]
+
+                assert len(prop) == 1
+                prop = prop.iloc[0, :].copy()
+                prop['modality'] = 'atac-p'
+                if not 'atac-p' in self.modalities.keys():
+                    self.modalities['atac-p'] = {}
+                
+                self.modalities['atac-p'][sampkey] = peak_matrix[sampkey]
+                self.metadata.insert_row(prop)
+
+    def run_atac_make_peak_matrix(self, run_on_samples = False, **kwargs):
+        peak_matrix = self.do_for_atac(run_on_samples, st.atac_make_peak_matrix, **kwargs)
+        if isinstance(peak_matrix, dict):
+            for sampkey in peak_matrix.keys():
+                prop = self.metadata.dataframe.loc[
+                    (self.metadata.dataframe['sample'] == sampkey) &
+                    (self.metadata.dataframe['modality'] == 'atac'), :
+                ]
+
+                assert len(prop) == 1
+                prop = prop.iloc[0, :].copy()
+                prop['modality'] = 'atac-p'
+                if not 'atac-p' in self.modalities.keys():
+                    self.modalities['atac-p'] = {}
+                
+                self.modalities['atac-p'][sampkey] = peak_matrix[sampkey]
+                self.metadata.insert_row(prop)
+
+    def run_atacp_filter_row_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_atac_peaks(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
+    def run_atacp_filter_column_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_atac_peaks(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
+    def run_atacp_annotate_peak(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_peaks(run_on_samples, st.atacp_annotate_peak, **kwargs)
+
+    def run_atacp_markers_deseq(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_peaks(run_on_samples, st.rna_markers_deseq, **kwargs)
+
+    def run_atacp_retrieve_sequence(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_peaks(run_on_samples, st.atacp_retrieve_sequence, **kwargs)
 
     def run_atacg_log_normalize(self, run_on_samples = False, **kwargs):
         self.do_for_atac_gene_activity(run_on_samples, st.rna_log_normalize, **kwargs)
 
+    def run_atacg_filter_row_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_atac_gene_activity(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
+    def run_atacg_filter_column_by_sum(self, run_on_samples = False, **kwargs):
+        results = self.do_for_atac_gene_activity(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata['rna'] = results
+
     def run_atacg_impute_magic(self, run_on_samples = False, **kwargs):
         self.do_for_atac_gene_activity(run_on_samples, st.rna_impute_magic, **kwargs) 
 
+    def run_atacg_markers_deseq(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_gene_activity(run_on_samples, st.rna_markers_deseq, **kwargs)
 
-    
+
     def run_rnaspc_qc(self, run_on_samples = False, **kwargs):
         self.do_for_rnaspc(run_on_samples, st.rna_qc, **kwargs)
         
@@ -1356,7 +1618,6 @@ class experiment:
     def run_rnaspc_transform(self, run_on_samples = False, xfunc = lambda x:x, yfunc = lambda x:x):
         self.do_for_rnaspc(run_on_samples, st.rnaspc_transform, xfunc = xfunc, yfunc = yfunc)
 
-
     def run_rnaspc_expression_mask(
         self, run_on_samples = False, gene = None, key = 'mask', 
         lognorm = 'X', threshold = 0.1, negate = False
@@ -1366,7 +1627,6 @@ class experiment:
             gene = gene, key = key, lognorm = lognorm, threshold = threshold,
             negate = negate
         )
-
 
     def run_rnaspc_integrate(self, method = 'harmony', dest = 'harmony', **kwargs):
         
@@ -1423,6 +1683,7 @@ class experiment:
         self.modalities['rnasp-c'][kwargs.get('sample_added')] = roi
         self.modalities['rnasp-c'][kwargs.get('sample_added')].var = \
             st.search_genes(self.modalities['rnasp-c'][kwargs.get('sample_added')].var_names.tolist())
+
 
 
     # plotting wrappers
@@ -1601,55 +1862,74 @@ class experiment:
         return self.plot_for_rna(run_on_samples, st.adata_plot_matrix, **kwargs)
     
 
+
     # accessor wrappers
 
     def get_rna_markers(
-        self, de_slot = 'markers', group_name = None, max_q = None,
+        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
         min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
     ):
-        self.check_merged('rna')
-        return st.rna_get_markers(
-            self.mudata['rna'], de_slot = de_slot, group_name = group_name,
+        return self.do_for_rna(
+            run_on_samples, st.rna_get_markers,
+            de_slot = de_slot, group_name = group_name,
             max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
             max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
         )
     
+    def get_atacp_markers(
+        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
+        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
+    ):
+        return self.do_for_atac_peaks(
+            run_on_samples, st.rna_get_markers,
+            de_slot = de_slot, group_name = group_name,
+            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
+            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
+        )
+    
+    def get_atacg_markers(
+        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
+        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
+    ):
+        return self.do_for_atac_gene_activity(
+            run_on_samples, st.rna_get_markers,
+            de_slot = de_slot, group_name = group_name,
+            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
+            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
+        )
 
     def get_rna_lr(
-        self, lr_slot = 'lr', source_labels = None, target_labels = None,
+        self, run_on_samples = False, lr_slot = 'lr', source_labels = None, target_labels = None,
         ligand_complex = None, receptor_complex = None, 
         filter_fun = None, top_n: int = None,
         orderby: str | None = None,
         orderby_ascending: bool | None = None,
         orderby_absolute: bool = False
     ):
-        self.check_merged('rna')
-        return st.rna_get_lr(
-            self.mudata['rna'], lr_slot = lr_slot, source_labels = source_labels,
+        return self.do_for_rna(
+            run_on_samples, st.rna_get_lr,
+            lr_slot = lr_slot, source_labels = source_labels,
             target_labels = target_labels, ligand_complex = ligand_complex,
             receptor_complex = receptor_complex, filter_fun = filter_fun,
             top_n = top_n, orderby = orderby, orderby_ascending = orderby_ascending,
             orderby_absolute = orderby_absolute
         )
     
-
     def get_rna_gsea(
-        self, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05
+        self, run_on_samples = False, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05
     ):
-        self.check_merged('rna')
-        return st.rna_get_gsea(
-            self.mudata['rna'], gsea_slot = gsea_slot,
+        return self.do_for_rna(
+            run_on_samples, st.rna_get_gsea, 
+            gsea_slot = gsea_slot,
             max_fdr = max_fdr, max_p = max_p
         )
     
-
     def get_rna_opa(
-        self, opa_slot = 'opa', max_fdr = 1.00, max_p = 0.05
+        self, run_on_samples = False, opa_slot = 'opa', max_fdr = 1.00, max_p = 0.05
     ):
-        self.check_merged('rna')
-        return st.rna_get_opa(
-            self.mudata['rna'], gsea_slot = opa_slot,
-            max_fdr = max_fdr, max_p = max_p
+        return self.do_for_rna(
+            run_on_samples, st.rna_get_opa, 
+            gsea_slot = opa_slot, max_fdr = max_fdr, max_p = max_p
         )
 
 

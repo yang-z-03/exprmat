@@ -135,7 +135,7 @@ def velocity_embedding_stream(
     recompute = None,
     color = 'black',
     layer = None,
-    color_map = 'Turbo',
+    color_map = 'turbo',
     X = None,
     V = None,
     X_grid = None,
@@ -232,7 +232,6 @@ def velocity_embedding_stream(
         'cmap_reverse': False,
         'cmap_lower': '#000000',
         'hue_norm': None,
-        'legend_loc': 'right margin',
         'frameon': 'small'
     }
 
@@ -263,7 +262,7 @@ def velocity(
     fits = None,
     layers = "all",
     color = None,
-    color_map = 'Turbo',
+    color_map = 'turbo',
     perc = None,
     alpha = 0.5,
     size = None,

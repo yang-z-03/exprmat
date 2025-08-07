@@ -29,6 +29,27 @@ def read_table(prefix, **kwargs):
     else: error(f'do not find {prefix} in any supported table format.')
 
 
+def read_table_from_extension(fname, **kwargs):
+
+    if fname.endswith('.parquet'):
+        return pd.read_parquet(fname, **kwargs)
+    elif fname.endswith('.parquet.gz'):
+        return pd.read_parquet(fname, **kwargs)
+    elif fname.endswith('.feather'):
+        return pd.read_feather(fname, **kwargs)
+    elif fname.endswith('.feather.gz'):
+        return pd.read_feather(fname, **kwargs)
+    elif fname.endswith('.tsv'):
+        return pd.read_table(fname, **kwargs)
+    elif fname.endswith('.tsv.gz'):
+        return pd.read_table(fname, **kwargs)
+    elif fname.endswith('.csv'):
+        return pd.read_csv(fname, **kwargs)
+    elif fname.endswith('.csv.gz'):
+        return pd.read_csv(fname, **kwargs)
+    else: error(f'do not find {fname} in any supported table format.')
+
+
 def read_multiscale_image_from_spatial(folder):
 
     import json
@@ -59,8 +80,8 @@ def read_multiscale_image_from_spatial(folder):
     
     template = {
         'images': {
-            'hires': highres,
-            'lores': lowres,
+            'hires': highres / 255,
+            'lores': lowres / 255,
             'origin': None
         },
         'scalefactors': {
@@ -339,8 +360,8 @@ def read_multiscale_image(
 
         sp = {
             'images': {
-                'hires': highres,
-                'lores': lowres,
+                'hires': highres / 255,
+                'lores': lowres / 255,
                 'origin': basefile
             },
             'scalefactors': {
@@ -382,8 +403,8 @@ def read_multiscale_image(
 
         sp = {
             'images': {
-                'hires': highres,
-                'lores': lowres,
+                'hires': highres / 255,
+                'lores': lowres / 255,
                 'origin': basefile
             },
             'scalefactors': {
@@ -508,7 +529,9 @@ def read_visium(
         tpos_file = os.path.join(src, 'spatial', 'tissue_positions')
     else: error('failed to find tissue position list.')
 
-    spatial = read_table(tpos_file).set_index('barcode')
+    spatial = read_table(tpos_file)
+    spatial.columns = ['barcode', 'in.tissue', 'row', 'col', 'y', 'x']
+    spatial = spatial.set_index('barcode')
     barcodes = adata.obs['barcode'].tolist()
     spatial.index = (props['sample'] + ':') + spatial.index
     sorted_df = spatial.loc[barcodes, :].copy()

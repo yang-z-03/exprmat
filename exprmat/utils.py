@@ -25,6 +25,7 @@ def setup_styles(
     plt.rcParams['font.sans-serif'] = font_name
     plt.rcParams["ytick.labelright"] = False
     plt.rcParams["ytick.labelleft"] = True
+    plt.rcParams["figure.max_open_warning"] = False
 
     # export text as fonts, not as paths.
     plt.rcParams['pdf.fonttype'] = 42
@@ -726,3 +727,15 @@ def in_ipynb():
     # registered when running in an interactive notebook.
     try: return str(type(get_ipython())) in notebooks
     except NameError: return False
+
+
+def reduce(f, list, **kwargs):
+
+    if len(list) <= 2: 
+        error('should not use reduce when there is less than 2 elements to process.')
+    
+    f0 = f(list[0], list[1], **kwargs)
+    for i in range(2, len(list)):
+        f0 = f(f0, list[i], **kwargs)
+    
+    return f0
