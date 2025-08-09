@@ -57,7 +57,7 @@ Anaconda 来管理包。请选择使用一个固定的包管理器，例如，�
       cd /your/path/to/database
 
       # please fill in the token and secret. and select the same version as your
-      # python package (e.g. "0.1.30")
+      # python package (e.g. "0.1.38")
       bsync-fetch --id "your-aliyun-token" \
                   --secret "your-token-secret" \
                   --endpoint oss-cn-wuhan-lr.aliyuncs.com \
@@ -77,6 +77,50 @@ Anaconda 来管理包。请选择使用一个固定的包管理器，例如，�
       }
 
 6. 配置完成，你可以在 Python REPL 中输入 ``import exprmat``，若无异常说明安装成功。
+   在首次安装时，程序会自动编译其携带的 C 语言模块，因此需要你的环境中安装 C 语言编译器。
+   事实上，任何一个 Linux 环境都自带一套 C 编译器，程序在第一次导入过程中会提示编译信息：
+
+   .. code-block::
+
+      Python 3.10.18 (main, Jun  5 2025, 13:14:17) [GCC 11.2.0] on linux
+      Type "help", "copyright", "credits" or "license" for more information.
+
+      >>> import exprmat
+      [i] seems to be your first use of exprmat. the C modules are not compiled yet.
+      [i] compiling cython extension modules ...
+      [i] entering working directory: /usr/lib/python3.10/site-packages/exprmat
+      [i] compilation finished.
+
+7. 你可以通过下面两个版本号命令查看安装的详细信息。一定确保安装的数据库版本号与程序包版本号完全相同
+
+   .. code-block::
+
+      Python 3.10.18 (main, Jun  5 2025, 13:14:17) [GCC 11.2.0] on linux
+      Type "help", "copyright", "credits" or "license" for more information.
+
+      >>> import exprmat
+
+      >>> _ = exprmat.version()
+      [i] exprmat 0.1.38 / exprmat-db 0.1.38
+      [i] os: posix (linux)  platform version: 5.15.0-139-generic
+      [i] loaded configuration from /home/user/.exprmatrc
+      [i] current working directory: /home/user/bioinfo/packages/exprmat/docs
+      [i] current database directory: /home/user/bioinfo/packages/database (0.1.38)
+      [i] resident memory: 708.21 MiB
+      [i] virtual memory: 4.76 GiB
+
+      >>> exprmat.cuda()
+      [i] PyTorch version: 2.8.0+cu128
+      [i] GPU acceleration availability: YES
+      [i] CUDA version: 12.8
+      [i] Number of installed GPUs: 1
+      [i] Supporting BF16 format: YES
+      [i] Devices:
+      [i] [0] NVIDIA GeForce RTX 4060 *
+      [i]     CUDA capability: (8, 9)
+      [i]     Installed VRAM (GiB): 7.89 GiB
+      [i]     Supporting TensorCore: YES
+      [i]     Current dedicated memory: 0.00 / 7.89 GiB (0.0%)
 
 
 开始使用

@@ -128,6 +128,26 @@ if PERFORM_DATABASE_CHECK:
         warning(f'db version: {db_ver}  package version: {importlib.metadata.version("exprmat")}')
 
 
+def cuda():
+
+    import torch
+    info(f'PyTorch version: {torch.__version__}')
+    info(f'GPU acceleration availability: {"YES" if torch.cuda.is_available() else "NO"}')
+    if torch.cuda.is_available():
+        info(f'CUDA version: {torch.version.cuda}')
+        info(f'Number of installed GPUs: {torch.cuda.device_count()}')
+        info(f'Supporting BF16 format: {"YES" if torch.cuda.is_bf16_supported() else "NO"}')
+        info(f'Devices:')
+        for i in range(torch.cuda.device_count()):
+            total_mem = torch.cuda.get_device_properties(i).total_memory / 1024 / 1024 / 1024
+            dedicated_mem = torch.cuda.memory_allocated(i) / 1024 / 1024 / 1024
+            info(f'[{i}] {torch.cuda.get_device_name(i)} {"*" if torch.cuda.current_device() == i else ""}')
+            info(f'    CUDA capability: {torch.cuda.get_device_capability(i)}')
+            info(f'    Installed VRAM (GiB): {total_mem:.2f} GiB')
+            info(f'    Supporting TensorCore: {"YES" if torch.cuda.get_device_properties(0).major >= 7 else "NO"}')
+            info(f'    Current dedicated memory: {dedicated_mem:.2f} / {total_mem:.2f} GiB ({100 * dedicated_mem / total_mem:.1f}%)')
+
+
 def version(): 
     import os
     import sys

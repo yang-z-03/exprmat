@@ -805,7 +805,6 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
         gmodel = gmodel.loc[gmodel['type'] == 'gene', :].copy()
         bedgraphs = adata.obs['bedgraph'].tolist()
         import pyBigWig as pybw
-        import pyBedGraph as pybdg
         from rich.progress import track
         
         # generate a matrix with n_peaks * n_samples
@@ -819,7 +818,6 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
             if os.path.isfile(fp.replace('.bdg', '.bigwig')):
                 fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
                 ftype = 'bigwig'
-            else: fhandle = pybdg.BedGraph('', fp)
             
             for i_region in track(range(len(gmodel)), description = f'querying genes for {fp}'):
 
@@ -976,7 +974,6 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
         bedgraphs = adata.obs['bedgraph'].tolist()
         
         import pyBigWig as pybw
-        import pyBedGraph as pybdg
         from rich.progress import track
         
         # generate a matrix with n_peaks * n_samples
@@ -990,7 +987,6 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
             if os.path.isfile(fp.replace('.bdg', '.bigwig')):
                 fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
                 ftype = 'bigwig'
-            else: fhandle = pybdg.BedGraph('', fp)
             
             for i_region in track(range(len(peak_table)), description = f'querying peaks for {fp}'):
 

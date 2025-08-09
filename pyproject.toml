@@ -20,7 +20,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.37"
+version = "0.1.38"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -83,7 +83,6 @@ dependencies = [
     'graphtools',
     'bincsync >= 0.3.0',
     'pyBigWig',
-    'pyBedGraph',
     'loompy',
     'squidpy',
     'zarr',
