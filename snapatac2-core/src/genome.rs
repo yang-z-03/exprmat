@@ -244,11 +244,11 @@ impl ChromSizes {
     pub fn to_dataframe(&self) -> DataFrame {
         DataFrame::new(vec![
             Series::new(
-                "reference_seq_name",
+                "seqname",
                 self.0.iter().map(|x| x.0.clone()).collect::<Series>(),
             ),
             Series::new(
-                "reference_seq_length",
+                "len",
                 self.0.iter().map(|x| x.1).collect::<Series>(),
             ),
         ])

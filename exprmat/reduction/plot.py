@@ -97,8 +97,8 @@ def embedding_atlas(
         else: labels = X.reshape(-1)
 
      # try some conventions
-    elif 'ensembl' in adata.var.keys() and color in adata.var['ensembl'].tolist():
-        genes = adata.var['ensembl'].tolist()
+    elif 'id' in adata.var.keys() and color in adata.var['id'].tolist():
+        genes = adata.var['id'].tolist()
         X = adata.X[:, genes.index(color)]
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)
@@ -362,8 +362,8 @@ def embedding(
         else: labels = X.reshape(-1)
 
      # try some conventions
-    elif 'ensembl' in adata.var.keys() and color in adata.var['ensembl'].tolist():
-        genes = adata.var['ensembl'].tolist()
+    elif 'id' in adata.var.keys() and color in adata.var['id'].tolist():
+        genes = adata.var['id'].tolist()
         X = choose_layer(adata[:, genes.index(color)], layer = slot)
         if issparse(X): labels = X.toarray().reshape(-1)
         else: labels = X.reshape(-1)

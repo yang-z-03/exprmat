@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from boltons.iterutils import chunked
 from exprmat.descriptive.recovery import enrich_cells
-from rich.progress import track
+from exprmat import pprog
 
 # to reduce the memory footprint of a ranking matrix we use unsigned 32bit 
 # integers which provides a range from 0 through 4,294,967,295. this should be 
@@ -96,7 +96,7 @@ def aucell4r(
                     module.noweights() if noweights else module,
                     auc_threshold = auc_threshold,
                 )
-                for module in track(signatures, description = 'auc')
+                for module in pprog(signatures, desc = 'auc')
             ]
         ).unstack("regulon")
         aucs.columns = aucs.columns.droplevel(0)

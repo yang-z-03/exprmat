@@ -8,7 +8,7 @@ import os
 
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import attach_tcr
-from exprmat.ansi import warning, info, error, red, green
+from exprmat.ansi import warning, info, error, red, green, pprog
 from exprmat.configuration import default as cfg
 
 
@@ -245,6 +245,7 @@ def rna_markers_deseq(
     stat.columns = ['mean', 'lfc', 'lfc.se', 'scores', 'p', 'q']
     stat['names'] = adata.var_names.tolist()
     stat['gene'] = adata.var['gene'].tolist()
+    stat['gene'] = stat['gene'].astype('str')
     stat = stat.loc[~np.isnan(stat['mean']), :].copy()
     stat.loc[np.isnan(stat['q']), 'q'] = 1
 
@@ -496,11 +497,11 @@ def rna_ligand_receptor(
     de_method = 't-test', resource_name = 'consensus',
     verbose = True, key_added = 'lr', n_jobs = 20
 ):
-    adata.var['.ugene'] = adata.var_names.tolist()
+    adata.var['uid'] = adata.var_names.tolist()
     if gene_symbol is not None: adata.var_names = adata.var[gene_symbol].tolist()
     else: 
         adata.var['symbol'] = [str(x) if str(x) != 'nan' else y for x, y in zip(
-            adata.var['gene'].tolist(), adata.var['ensembl'].tolist()
+            adata.var['gene'].tolist(), adata.var['id'].tolist()
         )]
 
         adata.var.loc[adata.var['symbol'].isna(), 'symbol'] = \
@@ -519,7 +520,7 @@ def rna_ligand_receptor(
         verbose = verbose, key_added = key_added, n_jobs = n_jobs
     )
 
-    adata.var_names = adata.var['.ugene'].tolist()
+    adata.var_names = adata.var['uid'].tolist()
 
 
 def rna_score_genes(
@@ -766,12 +767,12 @@ def atac_make_bins(adata, sample_name, **kwargs):
     chromosome = [x.split(':')[0] for x in adata.var_names.tolist()]
     start = [x.split(':')[1].split('-')[0] for x in adata.var_names.tolist()]
     end = [x.split(':')[1].split('-')[1] for x in adata.var_names.tolist()]
-    adata.var['.seqid'] = chromosome
-    adata.var['.start'] = start
-    adata.var['.end'] = end
+    adata.var['chr'] = chromosome
+    adata.var['start'] = start
+    adata.var['end'] = end
     adata.var['location'] = adata.var_names.tolist()
 
-    i_taxa = cfg['taxa.reference'][adata.uns['assembly']]
+    i_taxa = adata.uns['assembly']
     adata.var['unique'] = ('bin:' + i_taxa + ':') + adata.var_names
     adata.var_names = adata.var['unique'].tolist()
     
@@ -805,7 +806,6 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
         gmodel = gmodel.loc[gmodel['type'] == 'gene', :].copy()
         bedgraphs = adata.obs['bedgraph'].tolist()
         import pyBigWig as pybw
-        from rich.progress import track
         
         # generate a matrix with n_peaks * n_samples
         # obs tables are copied from obs, and var tables from peak table.
@@ -819,7 +819,7 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
                 fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
                 ftype = 'bigwig'
             
-            for i_region in track(range(len(gmodel)), description = f'querying genes for {fp}'):
+            for i_region in pprog(range(len(gmodel)), desc = f'querying genes for {fp}'):
 
                 peak = gmodel.iloc[i_region, :]
                 # retrieve statistics.
@@ -868,7 +868,14 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
 
         # remove non-expressing genes.
         gmask = gene_activity.X.sum(axis = 0) > 0.01
+
+        # vars may be duplicated
+        import warnings
+        warnings.filterwarnings('ignore')
         gene_activity = gene_activity[:, gmask.tolist()[0]].copy()
+        gene_activity = gene_activity[:, ~gene_activity.var_names.duplicated()].copy()
+        warnings.filterwarnings('default')
+
         gene_activity.uns['assembly'] = adata.uns['assembly']
         gene_activity.uns['assembly.size'] = adata.uns['assembly.size']
         return gene_activity
@@ -888,10 +895,22 @@ def atac_call_peaks(adata, sample_name, key_added = 'peaks', **kwargs):
             if len(bdg) == 0: continue
             adata.uns[key_added][samp] = call_peak_from_bedgraph(bdg, **kwargs)
     
-    else: call_peak_from_fragments(adata, key_added = key_added, **kwargs)
+    else: 
+        call_peak_from_fragments(adata, key_added = key_added, **kwargs)
+        for groupname in adata.uns[key_added].keys():
+            # originally these columns are named as [
+            #     'chrom', 'start', 'end', 'name', 'score', 'strand', 
+            #     'signal_value', 'p_value', 'q_value', 'peak'
+            # ]
+            adata.uns[key_added][groupname].columns = [
+                'chr', 'start', 'end', 'peak', 'score', 'strand', 'fc', 'p', 'q', 'summit']
 
 
-def atac_merge_peaks(adata, sample_name, key_peaks = 'peaks', key_added = 'peaks.merged', key_groups = 'peaks.group', groupby = 'group', **kwargs):
+def atac_merge_peaks(
+    adata, sample_name, key_peaks = 'peaks', 
+    key_added = 'peaks.merged', key_groups = 'peaks.group', 
+    groupby = 'group', flavor = 'idr', **kwargs
+):
     
     from exprmat.peaks.idr.idr import idr
     if 'bedgraph' in adata.obs.keys():
@@ -951,7 +970,54 @@ def atac_merge_peaks(adata, sample_name, key_peaks = 'peaks', key_added = 'peaks
                 only_merge_peaks = True, **kwargs
             )
     
-    else: raise NotImplementedError
+    else: 
+
+        if flavor == 'idr':
+            group_peaks = adata.uns[key_groups]
+            # merge between groups (nonredundant)
+            if len(group_peaks) == 1:
+                adata.uns[key_added] = group_peaks[list(group_peaks.keys())[0]]
+            elif len(group_peaks) == 2:
+                keys = list(group_peaks.keys())
+                adata.uns[key_added] = idr(
+                    df1 = group_peaks[keys[0]],
+                    df2 = group_peaks[keys[1]],
+                    signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                    use_nonoverlapping_peaks = True,
+                    only_merge_peaks = True, **kwargs
+                )
+            else:
+                from exprmat.utils import reduce
+                lst = [group_peaks[x] for x in group_peaks.keys()]
+                adata.uns[key_added] = reduce(
+                    idr, lst,
+                    signal_type = 'score', summit_type = 'summit', peak_merge_fn = np.sum,
+                    use_nonoverlapping_peaks = True,
+                    only_merge_peaks = True, **kwargs
+                )
+
+        elif flavor == 'snapatac':
+            # recover the snapatac convention
+            grouped = {k: adata.uns[key_groups][k].copy() for k in adata.uns[key_groups].keys()}
+            for g in grouped.keys():
+                grouped[g].columns = [
+                    'chrom', 'start', 'end', 'name', 'score', 'strand', 
+                    'signal_value', 'p_value', 'q_value', 'peak'
+                ]
+
+            from exprmat.peaks.callpeak import merge_peaks
+            from exprmat.data.finders import get_genome_size
+            pks = merge_peaks(
+                grouped, get_genome_size(adata.uns['assembly']), **kwargs).to_pandas()
+            
+            # format to standard:
+            pks['chr'] = [x.split(':')[0] for x in pks['Peaks']]
+            pks['start'] = [int(x.split(':')[1].split('-')[0]) for x in pks['Peaks']]
+            pks['end'] = [int(x.split(':')[1].split('-')[1]) for x in pks['Peaks']]
+            pks['strand'] = '.'
+            pks['summit'] = (((pks['end'] - pks['start']) / 2)).astype('int')
+            del pks['Peaks']
+            adata.uns[key_added] = pks
 
 
 def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact = True, **kwargs):
@@ -974,7 +1040,6 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
         bedgraphs = adata.obs['bedgraph'].tolist()
         
         import pyBigWig as pybw
-        from rich.progress import track
         
         # generate a matrix with n_peaks * n_samples
         # obs tables are copied from obs, and var tables from peak table.
@@ -988,7 +1053,7 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
                 fhandle = pybw.open(fp.replace('.bdg', '.bigwig'))
                 ftype = 'bigwig'
             
-            for i_region in track(range(len(peak_table)), description = f'querying peaks for {fp}'):
+            for i_region in pprog(range(len(peak_table)), desc = f'querying peaks for {fp}'):
 
                 peak = peak_table.iloc[i_region, :]
                 # retrieve statistics.
@@ -1002,11 +1067,30 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
 
         from scipy.sparse import csr_matrix
         pdata = ad.AnnData(X = csr_matrix(np.nan_to_num(mat)), obs = adata.obs, var = peak_table)
+        pdata.var_names = (
+            'peak:' + adata.uns['assembly'] + ':' + peak_table['chr'] + ':' + 
+            peak_table['start'].astype('str') + '-' + peak_table['end'].astype('str')
+        )
         pdata.uns['assembly'] = adata.uns['assembly']
         pdata.uns['assembly.size'] = adata.uns['assembly.size']
         return pdata
     
-    else: raise NotImplementedError
+    else:
+        
+        from exprmat.reader.peaks import make_peak_matrix
+        peaks = adata.uns[key_peaks]
+        peaks = peaks['chr'] + ':' + peaks['start'].astype('str') + '-' + peaks['end'].astype('str')
+        pdata = make_peak_matrix(adata, use_rep = peaks.tolist(), **kwargs)
+        pdata.var = adata.uns[key_peaks]
+        pdata.obs = adata.obs
+        pdata.var_names = (
+            'peak:' + adata.uns['assembly'] + ':' + peaks
+        )
+
+        pdata.uns['assembly'] = adata.uns['assembly']
+        pdata.uns['assembly.size'] = adata.uns['assembly.size']
+        
+        return pdata
 
 
 def atacp_annotate_peak(
@@ -1072,9 +1156,39 @@ def atacp_annotate_peak(
     pass
 
 
-def atacp_retrieve_sequence(adata, sample_name):
+def atacp_retrieve_sequence(adata, sample_name, **kwargs):
     from exprmat.peaks.sequence import query_sequence
-    query_sequence(adata)
+    query_sequence(adata, **kwargs)
+
+
+def atacp_expression_linkage(peaks, sample_name, rna, key_added = 'linkage', **kwargs):
+    from exprmat.peaks.linkage import gene_peak_linkage
+    linkage = gene_peak_linkage(rna, peaks, **kwargs)
+    peaks.uns[key_added] = linkage
+
+
+def atacp_motif_match(adata, sample_name, **kwargs):
+    from exprmat.peaks.motif import do_match_motif
+    do_match_motif(adata, **kwargs)
+
+
+def atacp_motif_enrichment(adata, sample_name, **kwargs):
+    from exprmat.peaks.motif import motif_enrichment
+    motif_enrichment(adata, **kwargs)
+
+
+def atacp_chromvar(adata, sample_name, **kwargs):
+    from exprmat.peaks.motif import compute_deviations
+    return compute_deviations(adata, **kwargs)
+
+
+def atacp_footprint(peaks, sample_name, adata_atac, **kwargs):
+    from exprmat.peaks.footprint import run_footprint
+    run_footprint(
+        adata_atac = adata_atac, 
+        adata_peaks = peaks, 
+        **kwargs
+    )
     
 
 def rna_plot_qc(adata, sample_name, **kwargs):
@@ -1684,6 +1798,16 @@ def rna_plot_cnmf_distance_modules(adata, sample_name, **kwargs):
 def atac_plot_qc(adata, sample_name, **kwargs):
     from exprmat.plotting.atac import atac_qc_metrics
     return atac_qc_metrics(adata, sample_name, **kwargs)
+
+
+def atac_plot_peaks(adata, sample_name, dump, **kwargs):
+    from exprmat.plotting.track import plot_peaks
+    if sample_name == 'integrated':
+        return plot_peaks(adata, sample_dir = dump, sample_name = '.', **kwargs)
+    else: return plot_peaks(
+        adata, sample_dir = os.path.join(dump, 'atac'), 
+        sample_name = sample_name, **kwargs
+    )
 
 
 def rna_get_gsea(adata, sample_name, gsea_slot = 'gsea', max_fdr = 1.00, max_p = 0.05):

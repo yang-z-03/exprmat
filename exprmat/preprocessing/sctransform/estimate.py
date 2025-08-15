@@ -4,13 +4,13 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy.special import digamma, polygamma
-from tqdm import tqdm
+from exprmat import pprog
 
 
 def estimate_parameters_all_genes(umi, model_matrix):
     
     results = []
-    for gene, row in tqdm(umi.iterrows(), ncols = 80):
+    for gene, row in pprog(umi.iterrows()):
 
         gene_counts = row.values.reshape((-1, 1))
         coefs, theta = estimate_parameters(gene_counts, model_matrix)

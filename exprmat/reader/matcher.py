@@ -183,7 +183,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
         query_gname = table[0].tolist()
         genome = get_genome(default_taxa)
         finder_gname = genome['gene'].tolist()
-        finder_ensembl = genome['ensembl'].tolist()
+        finder_ensembl = genome['id'].tolist()
 
         query_ensembl = []
         n_not_found = 0
@@ -203,7 +203,7 @@ def adjust_features(path, refine_finder = False, default_taxa = 'mmu', eccentric
 
                 reference_taxa = cfg['taxa.reference'][reference_name.lower()]
                 alt_name_finder = get_genome(reference_taxa)['gene'].tolist()
-                alt_ens_finder = get_genome(reference_taxa)['ensembl'].tolist()
+                alt_ens_finder = get_genome(reference_taxa)['id'].tolist()
 
                 if x in finder_gname: 
                     query_ensembl += [reference_name + '_' + alt_ens_finder[alt_name_finder.index(pure_nm)]]
@@ -462,8 +462,11 @@ def read_h5ad_rna(
     return final
 
 
-def convert_to_ugene(gname, taxa):
+def convert_to_ugene(gname, taxa, eccentric = None):
     
+    if eccentric:
+        gname = [eccentric(x) for x in gname]
+        
     # map gene naming
     names = []
     gmask = []

@@ -3,11 +3,10 @@ import os
 from multiprocessing import Manager
 from threading import Thread
 from joblib import delayed, Parallel
-from rich.progress import TextColumn, BarColumn, TimeRemainingColumn, TimeElapsedColumn
 
 import numpy as np
 from scipy.sparse import issparse, spmatrix
-from exprmat.ansi import error, warning, info
+from exprmat.ansi import error, warning, info, pprog
 
 
 def get_n_jobs(n_jobs):
@@ -67,10 +66,10 @@ def parallelize(
         Whether to show a progress bar.
     """
 
-    if show_progress_bar: from rich.progress import Progress as progress
+    if show_progress_bar: progress = pprog
     else: progress = None
 
-    def update(pbar, task, queue, n_total):
+    def update(pbar, queue, n_total):
         
         n_finished = 0
         while n_finished < n_total:
@@ -83,32 +82,17 @@ def parallelize(
             assert res in (None, (1, None), 1)  # (None, 1) means only 1 job
             if res == (1, None):
                 n_finished += 1
-                if pbar is not None: pbar.advance(task, advance = 1)
+                if pbar is not None: pbar.update(1)
             elif res is None: n_finished += 1
-            elif pbar is not None: pbar.advance(task, advance = 1)
-
-        if pbar is not None:
-            pbar.stop()
+            elif pbar is not None: pbar.update(1)
 
 
     def wrapper(*args, **kwargs):
 
         if pass_queue and show_progress_bar:
-            pbar = None if progress is None else progress(
-                TextColumn("[progress.description]"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>4.1f}%"),
-                TimeRemainingColumn(),
-                TimeElapsedColumn()
-            )
-
-            pbartask = None
-            if pbar is not None: 
-                pbartask = pbar.add_task(description = "", total = col_len)
-                pbar.start()
-
+            pbar = None if progress is None else progress(total = col_len)
             queue = Manager().Queue()
-            thread = Thread(target = update, args = (pbar, pbartask, queue, len(collections)))
+            thread = Thread(target = update, args = (pbar, queue, len(collections)))
             thread.start()
 
         else: pbar, queue, thread = None, None, None

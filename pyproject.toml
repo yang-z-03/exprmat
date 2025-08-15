@@ -20,7 +20,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.38"
+version = "0.1.39"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -70,7 +70,6 @@ dependencies = [
     'sh',
     'networkx',
     'palantir',
-    'rich',
     'adjustText',
     'h5py',
     'cytoolz',
@@ -101,7 +100,10 @@ dependencies = [
     'formulaic >= 1.0.2',
     'formulaic-contrasts >= 0.2.0',
     'Cython',
-    'pyfastx'
+    'pyfastx',
+    'genomicranges',
+    'rustworkx',
+    'xgboost'
 ]
 
 [project.optional-dependencies]

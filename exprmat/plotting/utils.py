@@ -77,13 +77,25 @@ def line(
     if ax is not None: fig, axis = ax.figure, ax
     else: fig, axis = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
 
-    axis.plot(
-        xscale(x), 
-        yscale(y),
-        linewidth = 1,
-        color = 'black',
-        linestyle = 'solid'
-    )
+    if isinstance(y, dict):
+        for k in y.keys():
+            axis.plot(
+                xscale(x), 
+                yscale(y[k]),
+                linewidth = 1,
+                linestyle = 'solid',
+                label = k
+            )
+        axis.legend(frameon = False)
+        
+    else: 
+        axis.plot(
+            xscale(x), 
+            yscale(y),
+            linewidth = 1,
+            color = 'black',
+            linestyle = 'solid',
+        )
 
     if hlines:
         axis.hlines(hlines, 0, 800)

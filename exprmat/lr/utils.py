@@ -4,10 +4,9 @@ from numpy import log10, finfo, exp
 from numpy import union1d
 import anndata
 import numpy as np
-from tqdm import tqdm
 
 from joblib import Parallel, delayed
-from exprmat.ansi import warning, error
+from exprmat.ansi import warning, error, pprog
 
 
 class default_params():
@@ -211,7 +210,7 @@ def generate_perms_cube(X, n_perms, labels_mask, seed, agg_fun, n_jobs, verbose)
     results = Parallel(n_jobs = n_jobs)(
         delayed(permute_and_aggregate)
         (perm, rng.permutation(idx), X, labels_mask, agg_fun)
-        for perm in tqdm(range(n_perms), disable = not verbose, ncols = 80)
+        for perm in pprog(range(n_perms), disable = not verbose)
     )
 
     # unpack results

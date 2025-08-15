@@ -794,10 +794,10 @@ def read_xenium_explorer(
     ).T
 
     var_table = pd.DataFrame({
-        'ensembl': mat['cell_features'].attrs['feature_ids'],
+        'id': mat['cell_features'].attrs['feature_ids'],
         'key': mat['cell_features'].attrs['feature_keys'],
         'type': mat['cell_features'].attrs['feature_types']
-    }).set_index('ensembl')
+    }).set_index('id')
 
     import anndata as ad
     adata = ad.AnnData(X = data, var = var_table)

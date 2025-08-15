@@ -58,9 +58,9 @@ pub trait SnapData: AnnDataOp {
         let df = self
             .uns()
             .get_item::<DataFrame>("assembly.size")?
-            .context("key 'reference_sequences' is not present in the '.uns'")?;
-        let chrs = df.column("reference_seq_name").unwrap().str()?;
-        let chr_sizes = df.column("reference_seq_length").unwrap().u64()?;
+            .context("key 'assembly.size' is not present in the '.uns'")?;
+        let chrs = df.column("seqname").unwrap().str()?;
+        let chr_sizes = df.column("len").unwrap().u64()?;
         let res = chrs
             .into_iter()
             .flatten()

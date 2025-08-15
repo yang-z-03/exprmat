@@ -10,10 +10,9 @@ import scipy.ndimage
 import scipy.sparse
 from anndata import AnnData
 from scanpy import logging
-from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import process_map
 
-from exprmat.ansi import error, warning, info
+from exprmat.ansi import error, warning, info, pproga
 from exprmat.utils import ensure_array
 
 
@@ -80,7 +79,7 @@ def infercnv(
     exclude_chromosomes
         List of chromosomes to exclude. The default is to exclude genosomes.
         For list of all available chromosomes in the dataset, you should manually check
-        the adata.var['.seqid'] column, when you are not using the pre-built genome annotations.
+        the adata.var['chr'] column, when you are not using the pre-built genome annotations.
 
     chunksize
         Process dataset in chunks of cells. This allows to run infercnv on
@@ -113,16 +112,16 @@ def infercnv(
 
     if not adata.var_names.is_unique:
         error('ensure your var_names are unique.')
-    if {'.seqid', '.start', '.end'} - set(adata.var.columns) != set():
-        warning('ensure your var table contains ".seqid", ".start", and ".end"')
+    if {'chr', 'start', 'end'} - set(adata.var.columns) != set():
+        warning('ensure your var table contains "chr", "start", and "end"')
         warning('this should be automatically queried for you if you specify a legal taxa name.')
         error('otherwise, you should parse the gff and configure these information yourself.')
 
-    var_mask = adata.var['.seqid'].isnull()
+    var_mask = adata.var['chr'].isnull()
     if np.sum(var_mask):
         warning(f'skipped {np.sum(var_mask)} genes because they don\'t have a genomic position annotated.')  # type: ignore
     if exclude_chromosomes is not None:
-        var_mask = var_mask | adata.var['.seqid'].isin(exclude_chromosomes)
+        var_mask = var_mask | adata.var['chr'].isin(exclude_chromosomes)
 
     valid_annot_adata = adata[:, ~ var_mask]
     reference = get_reference_cells(adata, reference_key, reference_cat, reference)[:, ~ var_mask]
@@ -131,7 +130,7 @@ def infercnv(
     if scipy.sparse.issparse(expr):
         expr = expr.tocsr()
 
-    var = valid_annot_adata.var.loc[:, ['.seqid', '.start', '.end']]
+    var = valid_annot_adata.var.loc[:, ['chr', 'start', 'end']]
     chr_pos, chunks, convolved_dfs = zip(
         *process_map(
             infercnv_proc,
@@ -143,7 +142,7 @@ def infercnv(
             itertools.repeat(step),
             itertools.repeat(dynamic_threshold),
             itertools.repeat(calculate_gene_values),
-            tqdm_class=tqdm,
+            tqdm_class = pproga,
             max_workers=cpu_count() if n_jobs is None else n_jobs,
         ),
         strict=False,
@@ -341,7 +340,7 @@ def running_mean_by_chr(
         and genomic position. This is a row in the plotted chromosome CNV matrix.
     '''
 
-    chromosomes = natural_sort([x for x in var['.seqid'].unique() if x != 'MT'])
+    chromosomes = natural_sort([x for x in var['chr'].unique() if x != 'MT'])
     running_means = [
         running_mean_chr(
             chr, expr, var, window_size, step, calculate_gene_values
@@ -361,7 +360,7 @@ def running_mean_by_chr(
 
 def running_mean_chr(chr, expr, var, window_size, step, calculate_gene_values):
 
-    genes = var.loc[var['.seqid'] == chr].sort_values('.start').index.values
+    genes = var.loc[var['chr'] == chr].sort_values('start').index.values
     tmp_x = expr[:, var.index.get_indexer(genes)]
     x_conv, convolved_gene_values = running_mean(
         tmp_x, n = window_size, step = step, 

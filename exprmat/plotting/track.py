@@ -1,6 +1,7 @@
 
 import matplotlib.pyplot as plt
 import math
+import pandas as pd
 
 
 def ncbi_to_ucsc(x): return 'chrM' if x == 'MT' else 'chr' + x
@@ -120,7 +121,7 @@ def genome_track(
 def chromosome_track(
     ax,
     xfrom, xto,
-    chr = '1',
+    chr = 'chr1',
     assembly = 'grcm39',
     color = 'assembly',
     draw_label = False
@@ -152,6 +153,11 @@ def chromosome_track(
             draw_box(ax, start, end, face, stroke, lw, round)
 
     def draw_band_boxes(ax, df, lw = 1, round = False, draw_label = False):
+
+        # for cytobands without color information
+        if not 'stain' in df.columns:
+            df['stain'] = 'gpos100'
+
         for start, end, txt, color in zip(df['start'], df['end'], df['name'], df['stain']):
             # acen  : regional centromere
             # gvar  : chromosomal structural element
@@ -207,7 +213,7 @@ def chromosome_track(
     elif color == 'cytobands':
         
         gbands = get_genome_cytobands(assembly)
-        gbands['chr'] = [ucsc_to_ncbi(x) for x in gbands['ucsc']]
+        gbands['chr'] = [x for x in gbands['ucsc']]
         gbands = gbands.loc[gbands['chr'] == chr, :]
         gbands = gbands.loc[(gbands['end'] >= xfrom) & (gbands['start'] <= xto), :].copy()
 
@@ -251,14 +257,14 @@ def gene_track(
                 waterflow += [requested_x]
                 requested_y = len(waterflow) - 1
 
-            displayname = name
+            displayname = str(name)
             if show_gene_name:
-                ens = gtable['ensembl'].tolist()
+                ens = gtable['id'].tolist()
                 dname = gtable['gene'].tolist()
                 if name in ens: displayname = dname[ens.index(name)] \
                     if str(ens.index(name)) != 'nan' else name
             
-            if displayname == 'nan':
+            if str(displayname) == 'nan':
                 displayname = ''
                 
             ntranscript = len(gene[gene['type'] == 'transcript'])
@@ -382,7 +388,7 @@ def bed_track(df, ax, chr, xfrom, xto):
         for start, end in zip(df['start'], df['end']):
             draw_box(ax, start, end, face, stroke, lw, round)
     
-    draw_boxes(ax, genes, face = 'blue', stroke = 'blue', lw = 1)
+    draw_boxes(ax, genes, face = 'orange', stroke = 'orange', lw = 1)
 
     return ax
 
@@ -426,6 +432,7 @@ def coverage_track(
     
     if ylabel is not None: ax.set_ylabel(ylabel)
     cov = coverage[(coverage['x'] >= xfrom) & (coverage['x'] <= xto)].copy()
+    cov = cov.fillna(0) # fill nan's with zero
     covx = cov['x'].tolist()
     covy = cov['y'].tolist()
     
@@ -470,7 +477,7 @@ def coverage_track_from_bam(
 
 
 def coverage_track_from_bigwig(
-    ax, bigwig, xfrom, xto, chrm, xticks, ncpus = 4,
+    ax, bigwig, xfrom, xto, chrm, xticks, ncpus = 4, use_refseq_style = False,
     color = 'blue', xlabel = None, ylabel = None, show_x_axis = True
 ):
     '''
@@ -488,6 +495,7 @@ def coverage_track_from_bigwig(
     import pandas
 
     bw = pyBigWig.open(bigwig)
+    if use_refseq_style: chrm = ucsc_to_ncbi(chrm)
     if not bw.chroms(chrm): error(f'specified chromosome {chrm} do not exist in the bigwig file.')
     depth = pandas.DataFrame({'x': [x for x in range(xfrom, xto)], 'y': bw.values(chrm, xfrom, xto)})
     return coverage_track(ax, xfrom, xto, xticks, depth[['x', 'y']], color, xlabel, ylabel, show_x_axis)
@@ -519,9 +527,8 @@ def architecture(assembly, figsize = (4, 8), dpi = 100, cby = 'assembly'):
     )
 
     for i, k in enumerate(sizes):
-        seq = k['name'].replace('chr', '')
-        if seq == 'M': seq = 'MT'
-        _ = genome_track(axes[i], ylabel = seq)
+        seq = k['name']
+        _ = genome_track(axes[i], ylabel = ucsc_to_ncbi(seq))
         _, _ = chromosome_track(axes[i], xfrom, xto, chr = seq, assembly = assembly, color = cby)
     
     return fig
@@ -570,7 +577,7 @@ def genes(
     elif where is not None:
         from exprmat.configuration import default as cfg
         gtable = get_genome(cfg['taxa.reference'][assembly.lower()])
-        ens = gtable['ensembl'].tolist()
+        ens = gtable['id'].tolist()
         name = gtable['gene'].tolist()
 
         if where in ens:
@@ -579,9 +586,9 @@ def genes(
             geneattr = gtable.iloc[name.index(where), :].copy()
         else: geneattr = gtable[where, :].copy()
 
-        chr = geneattr['.seqid']
-        xfrom = geneattr['.start'] - flanking
-        xto = geneattr['.end'] + flanking
+        chr = geneattr['chr']
+        xfrom = geneattr['start'] - flanking
+        xto = geneattr['end'] + flanking
 
         fig, axes = plot_there(
             assembly, xfrom, xto, chr, figsize, dpi, 
@@ -607,7 +614,7 @@ def whereis(assembly, where, upstream = 10000, downstream = 10000):
     gmodel = get_genome_model(assembly.lower())
     gmodel = gmodel.loc[gmodel['type'] == 'gene', :].copy()
 
-    ens = gtable['ensembl'].tolist()
+    ens = gtable['id'].tolist()
     name = gtable['gene'].tolist()
     gene_ensembl_id = ''
 
@@ -626,3 +633,167 @@ def whereis(assembly, where, upstream = 10000, downstream = 10000):
 
     return chr, xfrom, xto
     
+
+def plot_peaks(
+    adata, group_key, peaks_key = None,
+    gene = None, upstream = 5000, downstream = 5000, chr = None, xf = None, xt = None, 
+    figsize = (4, 4), dpi = 100, 
+    gene_track_height = 0.25, chrom_track_height = 0.05,  
+    peak_annotation_height = 0.1,
+    consensus_annotation_height = 0.05,
+    linkage_height = 0.25,
+    min_frag_length = None, max_frag_length = 180,
+    title = None, showgn = True,
+    plot_consensus_peak = None,
+    plot_linkage = None,
+    linkage_score = 'cor',
+    sample_dir = '.', sample_name = 'temp'
+):
+    from exprmat.ansi import error
+    x_groups = adata.obs[group_key].value_counts().index.tolist()
+    n_groups = len(x_groups)
+
+    height_per_channel = (1 - gene_track_height - chrom_track_height) / n_groups
+    heights = [chrom_track_height] + [
+        height_per_channel * (1 - peak_annotation_height), 
+        height_per_channel * peak_annotation_height
+    ] * n_groups
+
+    cumulative = 0
+    for x in heights: cumulative += x 
+    if plot_consensus_peak and plot_linkage: 
+        heights += [
+            (1 - cumulative) * (1 - consensus_annotation_height - linkage_height), 
+            (1 - cumulative) * consensus_annotation_height,
+            (1 - cumulative) * linkage_height
+        ]
+    elif plot_consensus_peak and (not plot_linkage):
+        heights += [
+            (1 - cumulative) * (1 - consensus_annotation_height), 
+            (1 - cumulative) * consensus_annotation_height,
+        ]
+    elif plot_linkage and (not plot_consensus_peak):
+        heights += [
+            (1 - cumulative) * (1 - linkage_height), 
+            (1 - cumulative) * linkage_height,
+        ]
+    else: heights += [1 - cumulative]
+
+    if gene: chr, xf, xt = whereis(adata.uns['assembly'], gene, upstream, downstream)
+    elif (xf is None) or (xt is None) or (chr is None):
+        error(f'you must specify chr, xf and xt manually if you don\'t tell us which gene to plot.')
+
+    n_subplots = 2 + 2 * n_groups
+    idx_consensus = -1
+    idx_linkage = -1
+    idx_gene = -1
+    if plot_consensus_peak: n_subplots += 1
+    if plot_linkage: n_subplots += 1
+
+    if plot_consensus_peak and plot_linkage:
+        idx_consensus = n_subplots - 2
+        idx_linkage = n_subplots - 1
+        idx_gene = n_subplots - 3
+    elif plot_consensus_peak and (not plot_linkage):
+        idx_consensus = n_subplots - 1
+        idx_gene = n_subplots - 2
+    elif plot_linkage and (not plot_consensus_peak):
+        idx_linkage = n_subplots - 1
+        idx_gene = n_subplots - 2
+    else: idx_gene = n_subplots - 1
+
+    fig, axes, xticks, xticklabels, xfrom, xto = initialize_tracks(
+        n_subplots, xfrom = xf, xto = xt, heights = heights,
+        figsize = figsize, dpi = dpi, sequence_name = title
+    )
+
+    _ = genome_track(axes[idx_gene], ylabel = 'Genes')
+    _, _ = chromosome_track(
+        axes[0], xfrom, xto, chr = chr, assembly = adata.uns['assembly'], color = 'cytobands', 
+        draw_label = (xfrom - xto) <= 25e6
+    )
+
+    _, gdf = gene_track(
+        axes[idx_gene], xfrom, xto, chr = chr, 
+        assembly = adata.uns['assembly'], show_gene_name = showgn
+    )
+
+    from exprmat.peaks.coverage import export_coverage
+    import os
+
+    coverage_dir = os.path.join(sample_dir, 'coverage', sample_name, f'{group_key}-{max_frag_length}')
+    built = True
+    if os.path.exists(coverage_dir):
+        for g in x_groups: built = built and (os.path.exists(os.path.join(coverage_dir, g + '.bigwig')))
+    else: built = False
+
+    if not os.path.exists(coverage_dir):
+        os.makedirs(coverage_dir)
+
+    if not built:
+        export_coverage(
+            adata, groupby = group_key, bin_size = 10, normalization = None,
+            min_frag_length = min_frag_length,
+            max_frag_length = max_frag_length,
+            suffix = '.bigwig',
+            out_dir = coverage_dir
+        )
+
+    for i, g in enumerate(x_groups):
+
+        _ = coverage_track_from_bigwig(
+            axes[i * 2 + 1], os.path.join(coverage_dir, g + '.bigwig'), 
+            xfrom, xto, chr, 
+            xticks, ylabel = g
+        )
+
+        _ = bed_track(
+            adata.uns[f'peaks.{group_key}' if not peaks_key else peaks_key][g][
+                ['chr', 'start', 'end']].copy(), 
+            axes[i * 2 + 2], chr, xfrom, xto
+        )
+    
+    # unify y axis
+    max_y = 1
+    for i, g in enumerate(x_groups):
+        _, yrange = axes[i * 2 + 1].get_ylim()
+        if yrange > max_y: max_y = yrange
+    for i, g in enumerate(x_groups): axes[i * 2 + 1].set_ylim((0, max_y))  
+    
+    if plot_consensus_peak:
+        _ = bed_track(
+            adata.uns[plot_consensus_peak][
+                ['chr', 'start', 'end']
+            ].copy(), 
+            axes[idx_consensus], chr, xfrom, xto
+        )
+
+    if plot_linkage:
+
+        linkage = adata.uns[plot_linkage]
+        linkage = linkage.loc[(linkage['chr'] == chr), :].copy()
+        linkage['peak'] = (linkage['start'] + linkage['end']) / 2
+        lnk_from = [min(x, y) for x, y in zip(linkage['peak'], linkage['tss'])]
+        lnk_to = [max(x, y) for x, y in zip(linkage['peak'], linkage['tss'])]
+        plotting = pd.DataFrame({
+            'start': lnk_from,
+            'end': lnk_to,
+            'intensity': linkage[linkage_score],
+            'gene': linkage['id']
+        })
+
+        plotting = plotting.loc[
+            (plotting['start'] < xto) &
+            (plotting['end'] > xfrom), :
+        ].copy()
+
+        genes_within = gdf.loc[gdf['type'] == 'gene', 'gid'].tolist()
+        plotting = plotting.loc[[x in genes_within for x in plotting['gene']], :].copy()
+        plotting['intensity'] = plotting['intensity'] / plotting['intensity'].max()
+
+        _ = linking_track(
+            axes[idx_linkage], xfrom, xto, plotting, 
+            reversed = True, color = 'red'
+        )
+
+    return fig

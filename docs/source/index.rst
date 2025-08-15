@@ -19,15 +19,15 @@ Anaconda 来管理包。请选择使用一个固定的包管理器，例如，�
 
 除了软件包，你还需要安装对应版本的物种数据库。否则大多数功能将无法使用。物种数据库是我们手动
 整理的，包含物种的基因表、参考基因组注释、染色体结构、配体受体数据库、基因集数据库、同源基因表、
-和转录因子库。目前我们只提供人 ``hsa`` 和小鼠 ``mmu`` 的物种数据库。目前处于早期开发阶段，
-并没有生成其他任意物种数据库的自动化方法。
+和转录因子库。目前我们只提供人 ``hsa`` 、小鼠 ``mmu`` 和果蝇 ``dme`` 的物种数据库。目前处于早期开发阶段，
+并没有提供生成其他任意物种数据库的自动化方法。
 
 1. 首先根据你的 GPU 和 CPU 情况安装对应版本的 PyTorch （要求 2.0 版本以上）
 
    .. code-block:: bash 
 
       # for a cpu-only version:
-      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+      pip install torch torchvision torchaudio
 
       # you may install the corresponding version if you have a supported gpu.
       # this is only an example.

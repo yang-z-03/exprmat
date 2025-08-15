@@ -67,10 +67,8 @@ def normalize_total(
     if target_total is None:
         target_total = np.mean(tots_use)
 
-    w = scipy.sparse.lil_matrix((ncell, ncell))
-    w.setdiag(float(target_total) / tots_use)
-    e_norm = w * E
-
+    b = np.array(float(target_total) / tots_use)
+    e_norm = E.multiply(b)
     return e_norm.tocsc()
 
 

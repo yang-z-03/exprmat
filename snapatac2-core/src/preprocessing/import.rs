@@ -300,11 +300,11 @@ where
         "assembly.size",
         DataFrame::new(vec![
             Series::new(
-                "reference_seq_name",
+                "seqname",
                 regions.iter().map(|x| x.chrom()).collect::<Series>(),
             ),
             Series::new(
-                "reference_seq_length",
+                "len",
                 regions.iter().map(|x| x.end()).collect::<Series>(),
             ),
         ])?,

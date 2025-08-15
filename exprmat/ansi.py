@@ -2,6 +2,10 @@
 import re
 import os
 
+from functools import partial
+from tqdm import tqdm
+from tqdm.auto import tqdm as tqdma
+
 
 def fore_black() -> None:
     print('\033[30m', end = '')
@@ -147,3 +151,13 @@ def yellow(x): return '\033[33m' + x + '\033[0m'
 def blue(x): return '\033[34m' + x + '\033[0m'
 def purple(x): return '\033[35m' + x + '\033[0m'
 def cyan(x): return '\033[36m' + x + '\033[0m'
+
+
+progress_styles = {
+    'ncols': 80,
+    'ascii': '-━',
+    'bar_format': '   {bar} {desc:20} {n:5d} / {total:<5d} ({elapsed} < {remaining})'
+}
+
+pprog = partial(tqdm, **progress_styles)
+pproga = partial(tqdma, **progress_styles)

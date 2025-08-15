@@ -9,7 +9,7 @@ import logging
 import math
 
 from exprmat.utils import get_igraph_from_adjacency, is_anndata 
-from exprmat.ansi import error, info
+from exprmat.ansi import error, info, pprog
 import exprmat.snapatac as internal
 
 
@@ -175,8 +175,7 @@ def spectral(
 
             model.fit(S)
 
-            from tqdm import tqdm
-            for batch, _, _ in tqdm(adata.chunked_X(chunk_size), total=math.ceil(adata.n_obs/chunk_size)):
+            for batch, _, _ in pprog(adata.chunked_X(chunk_size), total = math.ceil(adata.n_obs/chunk_size)):
                 if distance_metric == "jaccard":
                     batch.data = np.ones(batch.indices.shape, dtype=np.float64)
                 if features is not None: batch = batch[:, features]

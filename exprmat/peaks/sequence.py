@@ -1,11 +1,11 @@
 
 import os
-from rich.progress import track
+from exprmat import pprog
 from exprmat.data.finders import basepath
 from exprmat.configuration import default
 
 
-def query_sequence(adata):
+def query_sequence(adata, seqlen = None):
     
     taxa = default['taxa.reference'][adata.uns['assembly']]
     assembly = adata.uns['assembly']
@@ -18,12 +18,32 @@ def query_sequence(adata):
     adata.var['strand.neg'] = 'N'
     segments = adata.var[['chr', 'start', 'end']].copy().sort_values(['chr', 'start'])
     chromosomes = segments['chr'].value_counts().index.tolist()
-    for chr in track(chromosomes, description = 'fetching chromosome ...'):
-        positions = []
-        subset = segments.loc[segments['chr'] == chr, :].copy()
-        for f, t in zip(subset['start'], subset['end']):
-            positions.append((f, t))
 
-        adata.var.loc[subset.index, 'strand.pos'] = fa.fetch(chr, positions, strand = '+')
-        adata.var.loc[subset.index, 'strand.neg'] = fa.fetch(chr, positions, strand = '-')
+    for chr in pprog(chromosomes, desc = 'fetching chromosome'):
+        positions = []
+        subset = segments.loc[segments['chr'] == chr, :].sort_values('start').copy()
+        for f, t in zip(subset['start'], subset['end']):
+            # extract the central seqlen sequence
+            if seqlen: positions.append((
+                (f + t) // 2 - seqlen // 2,
+                (f + t) // 2 - seqlen // 2 + seqlen - 1,
+            ))
+                
+            # extract the full sequence
+            else: positions.append((f, t))
+
+        posstrand = fa.fetch(chr, positions, strand = '+')
+        negstrand = fa.fetch(chr, positions, strand = '-')
+        tot_length = len(negstrand)
+        cum_start = 0
+        for ind, leng in zip(
+            subset.index, 
+            ([seqlen] * len(subset)) if seqlen else (subset['end'] - subset['start'] + 1)
+        ):
+            adata.var.loc[ind, 'strand.pos'] = posstrand[cum_start : cum_start + leng]
+            adata.var.loc[ind, 'strand.neg'] = negstrand[tot_length - cum_start - leng : tot_length - cum_start]
+            cum_start += leng
+        
+        assert cum_start == len(posstrand)
+        assert cum_start == len(negstrand)
     

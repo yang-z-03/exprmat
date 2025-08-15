@@ -6,11 +6,10 @@ from functools import partial
 from multiprocessing import Pool, cpu_count
 from pathlib import PurePath
 import pandas as pd
-from rich.progress import track
 
 from exprmat.utils import choose_layer
 from exprmat.data.tf import get_tfs
-from exprmat.ansi import info, warning, error
+from exprmat.ansi import info, warning, error, pprog
 from exprmat.grn.regressors import (
     EARLY_STOP_WINDOW_LENGTH,
     kwargs_random_forest,
@@ -67,7 +66,7 @@ def adjacencies(
 
     with Pool(ncpus) as p:
         adjs = list(
-            track(
+            pprog(
                 p.imap(
                     partial(
                         run_infer_partial_network,
@@ -82,7 +81,7 @@ def adjacencies(
                     chunksize = 1,
                 ),
                 total = len(gene_names),
-                description = 'inferring partial network '
+                desc = 'inferring partial network'
             )
         )
 

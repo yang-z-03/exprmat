@@ -32,6 +32,7 @@ from exprmat.reader.matcher import attach_tcr
 from exprmat.ansi import warning, info, error, red, green
 from exprmat.configuration import default as cfg
 import exprmat.reader.static as st
+import exprmat as em
 
 
 class experiment:
@@ -40,8 +41,12 @@ class experiment:
         self, meta : metadata, 
         eccentric = None, 
         mudata = None, modalities = {}, 
-        dump = '.', subset = None
+        dump = '.', subset = None,
+        version = em.SPECIFICATION
     ):
+        
+        from exprmat.reader.updater import update
+        version = update(meta, modalities, mudata, version)
 
         # TODO: we support rna only at present.
         table = meta.dataframe.to_dict(orient = 'list')
@@ -50,6 +55,7 @@ class experiment:
         self.metadata = meta
         self.subset = subset
         self.directory = dump
+        self.version = version
 
         if self.mudata is not None:
             if len(self.modalities) == 0:
@@ -238,6 +244,11 @@ class experiment:
                     sorted_by_barcode = False,
                 )
 
+                # rename the fragments:
+                frags.obs['barcode'] = i_sample + ':' + frags.obs_names
+                frags.obs_names = [i_sample + ':' + str(ix + 1) for ix in range(frags.n_obs)]
+                frags.obs['ubc'] = frags.obs_names.copy()
+
                 frags.uns['assembly'] = default_assembly
                 # frags must not have the var table. otherwise error will occur when
                 # assigning bins to the vars.
@@ -292,7 +303,7 @@ class experiment:
                     pdf = read_table_from_extension(prop['location'])
                     sampdf = pdf[[pdf.columns[0], prop['sample']]].set_index(pdf.columns[0])
 
-                    names, gmask, notinlist = convert_to_ugene(sampdf.index.tolist(), i_taxa)
+                    names, gmask, notinlist = convert_to_ugene(sampdf.index.tolist(), i_taxa, eccentric = eccentric)
                     info(f'{len(notinlist)} unmatched genes from {len(sampdf)} rows.')
                     sampdf = sampdf.loc[gmask, :].copy()
                     sampdf.index = names
@@ -340,47 +351,104 @@ class experiment:
                 if len(meta['taxa'].unique()) != 1:
                     error('failed to merge atac experiments with different reference.')
                 
+                given_format = []
+                for sid in range(len(meta)):
+                    prop = meta.iloc[sid].copy()
+                    given_format.append(prop['location'].split('.')[-1])
+                
+                given_format = list(set(given_format))
+                if len(given_format) > 1:
+                    warning('you should always supply samples from bulk atacseq experiment with the same format.')
+                    warning(f'here, you supplied [{", ".join(given_format)}].')
+                    error(f'failed to harmonize atac-seq data with different format.')
+
+                given_format = given_format[0]
+                
                 i_taxa = meta['taxa'].unique().tolist()[0]
                 if '/' in i_taxa: i_taxa, i_assembly = i_taxa.split('/')
                 else: i_assembly = cfg['default.assembly'][i_taxa]
 
                 example_row = None
+                fragments = []
                 for sid in range(len(meta)):
-
                     prop = meta.iloc[sid].copy()
 
-                    if prop['location'].endswith('.bampe'):
-                        prop['bam'] = prop['location']
-                    elif prop['location'].endswith('.bam'):
-                        prop['bam'] = prop['location']
-                    else: prop['bam'] = ''
-
-                    if prop['location'].endswith('.bdg'):
+                    if given_format == 'bdg':
                         prop['bedgraph'] = prop['location']
-                    else: prop['bedgraph'] = ''
+                        # if there is bedgraph, test whether there is a bigwig file accompanying.
+                        # for plotting we want bigwig files.
+                        accbw = prop['location'].replace('.bdg', '.bigwig')
+                        if not os.path.exists(accbw):
+                            warning('do not find an accompanying bigwig files for visualization')
+                            warning(f'generating bigwig file from bedgraph {prop["location"]} ...')
+                            from exprmat.reader.conversions import bedgraph_to_bigwig
+                            bedgraph_to_bigwig(prop['location'], i_assembly, accbw)
+
+                    elif given_format == 'bigwig':
+                        accbw = prop['location'].replace('.bigwig', '.bdg')
+                        if not os.path.exists(accbw):
+                            warning('do not find an accompanying bedgraph files for peak calling')
+                            warning(f'generating bedgraph file from bigwig {prop["location"]} ...')
+                            from exprmat.reader.conversions import bigwig_to_bedgraph
+                            bigwig_to_bedgraph(prop['location'], accbw)
+                        prop['bedgraph'] = accbw
+                    
+                    elif given_format == 'bam':
+                        
+                        # we expect the input bam are pair-end sequencing, sorted by coordinate
+                        # now we will add sample tag to them, and generate fragments file for each.
+                        from exprmat.reader.conversions import bam_to_fragments
+                        frag = bam_to_fragments(prop['location'], prop['sample'])
+                        fragments.append(frag)
 
                     datarows += [pd.DataFrame(prop).T]
                     example_row = prop.copy()
                 
-                datarows = pd.concat(datarows)
-                datarows.index = 'bulk-atac:' + datarows['sample']
-                datarows.index.name = None
-                from scipy.sparse import csr_matrix
-                adata = ad.AnnData(
-                    X = csr_matrix((len(datarows), 0), dtype = np.float32), 
-                    obs = datarows
-                )
+                if given_format != 'bam':
+                    datarows = pd.concat(datarows)
+                    datarows.index = 'bulk-atac:' + datarows['sample']
+                    datarows.index.name = None
+                    from scipy.sparse import csr_matrix
+                    adata = ad.AnnData(
+                        X = csr_matrix((len(datarows), 0), dtype = np.float32), 
+                        obs = datarows
+                    )
+
+                    from exprmat.data.finders import get_genome_size
+                    adata.uns['assembly.size'] = get_genome_size(i_assembly, as_dataframe = True)
+                
+                else:
+
+                    # concat gzipped fragments
+                    import tempfile
+                    fd, temp_name = tempfile.mkstemp()
+                    os.close(fd)
+                    os.unlink(temp_name)
+                    os.system('cat ' + ' '.join([f'"{x}"' for x in fragments]) + ' > ' + temp_name + '.tsv.gz')
+                    
+                    from exprmat.reader.peaks import import_fragments
+                    adata = import_fragments(
+                        temp_name + '.tsv.gz',
+                        assembly = i_assembly,
+                        sorted_by_barcode = True,
+                    )
+                    
+                    datarows = pd.concat(datarows)
+                    datarows.index = datarows['sample']
+                    datarows.index.name = None
+                    adata.obs = adata.obs.join(datarows)
+                    adata.obs_names = 'bulk-atac:' + datarows['sample']
+
+                    os.unlink(temp_name + '.tsv.gz')
 
                 adata.uns['assembly'] = i_assembly
-                from exprmat.data.finders import get_genome_size
-                adata.uns['assembly.size'] = get_genome_size(i_assembly)
 
                 if not 'atac' in self.modalities.keys(): self.modalities['atac'] = {}
                 self.modalities['atac']['bulk-atac'] = adata
 
                 # replace metadata
                 example_row['sample'] = 'bulk-atac'
-                example_row['location'] = ':/rna/bulk-atac'
+                example_row['location'] = ':/atac/bulk-atac'
                 example_row['group'] = '.'
                 example_row['taxa'] = '.'
                 example_row['modality'] = 'atac'
@@ -616,7 +684,7 @@ class experiment:
                 if var_table is not None:
                     merged['atac'].var = var_table.loc[
                         merged['atac'].var_names, 
-                        ['.seqid', '.start', '.end', 'location', 'unique']
+                        ['chr', 'start', 'end', 'location', 'unique']
                     ]
 
             pass
@@ -837,14 +905,16 @@ class experiment:
     
     def plot_for_modality(
         self, modality, run_on_samples, func,
-        run_on_splits = False, split_key = None, split_selection = None, **kwargs
+        run_on_splits = False, split_key = None, split_selection = None, 
+        do_tight_layout = True, **kwargs
     ):
         from exprmat.utils import setup_styles
         setup_styles()
 
         if isinstance(run_on_samples, bool) and run_on_samples:
             figures = self.do_for(modality, self.all_samples(modality), func, **kwargs)
-            for f in figures.values(): f.tight_layout()
+            for f in figures.values(): 
+                if do_tight_layout: f.tight_layout()
             return figures
         
         elif isinstance(run_on_samples, list):
@@ -852,8 +922,13 @@ class experiment:
                 modality, list(set(self.all_samples(modality)) & set(run_on_samples)), 
                 func, **kwargs
             )
+
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for f in figures.values(): 
+                    if do_tight_layout: f.tight_layout()
             
-            for f in figures.values(): f.tight_layout()
             return figures
         
         else:
@@ -868,7 +943,7 @@ class experiment:
                 figure = func(self.mudata[modality], 'integrated', **kwargs)
                 import warnings
                 warnings.filterwarnings('ignore')
-                figure.tight_layout()
+                if do_tight_layout: figure.tight_layout()
                 return figure
 
             else:
@@ -887,7 +962,7 @@ class experiment:
                         **kwargs
                     )
 
-                    results[split_selection[feat_id]].tight_layout()
+                    if do_tight_layout: results[split_selection[feat_id]].tight_layout()
                 
                 return results
     
@@ -905,7 +980,7 @@ class experiment:
         run_on_splits = False, split_key = None, split_selection = None, **kwargs
     ):
         return self.plot_for_modality(
-            'atac', run_on_samples, func, 
+            'atac', run_on_samples, func,
             run_on_splits, split_key, split_selection, **kwargs
         )
 
@@ -1278,21 +1353,21 @@ class experiment:
         if isinstance(results, dict):
             for k in results.keys():
                 self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+        else: self.mudata.mod['rna'] = results
 
     def run_rna_filter_row_by_sum(self, run_on_samples = False, **kwargs):
         results = self.do_for_rna(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
                 self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+        else: self.mudata.mod['rna'] = results
 
     def run_rna_filter_column_by_sum(self, run_on_samples = False, **kwargs):
         results = self.do_for_rna(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
                 self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+        else: self.mudata.mod['rna'] = results
 
     def run_rna_log_normalize(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_log_normalize, **kwargs)
@@ -1469,8 +1544,8 @@ class experiment:
         # more efficiently, should count on bigwig files.
 
         if not run_on_samples:
-            if 'atac.g' in self.mudata.mod.keys():
-                warning('atac.g modality exists in the mudata object. the run is cancelled to prevent overwrite.')
+            if 'atac-g' in self.mudata.mod.keys():
+                warning('atac-g modality exists in the mudata object. the run is cancelled to prevent overwrite.')
                 error('if you want to overwrite existing modality, you should delete it manually first.')
 
         data = self.do_for_atac(run_on_samples, st.atac_infer_gene_activity, **kwargs)
@@ -1490,7 +1565,7 @@ class experiment:
                 self.modalities['atac-g'][sampkey] = data[sampkey]
                 self.metadata.insert_row(prop)
         
-        else: self.mudata.mod['atac.g'] = data
+        else: self.mudata.mod['atac-g'] = data
 
     def run_atac_call_peaks(self, run_on_samples = False, **kwargs):
         self.do_for_atac(run_on_samples, st.atac_call_peaks, **kwargs)
@@ -1515,38 +1590,22 @@ class experiment:
                 
                 self.modalities['atac-p'][sampkey] = peak_matrix[sampkey]
                 self.metadata.insert_row(prop)
-
-    def run_atac_make_peak_matrix(self, run_on_samples = False, **kwargs):
-        peak_matrix = self.do_for_atac(run_on_samples, st.atac_make_peak_matrix, **kwargs)
-        if isinstance(peak_matrix, dict):
-            for sampkey in peak_matrix.keys():
-                prop = self.metadata.dataframe.loc[
-                    (self.metadata.dataframe['sample'] == sampkey) &
-                    (self.metadata.dataframe['modality'] == 'atac'), :
-                ]
-
-                assert len(prop) == 1
-                prop = prop.iloc[0, :].copy()
-                prop['modality'] = 'atac-p'
-                if not 'atac-p' in self.modalities.keys():
-                    self.modalities['atac-p'] = {}
-                
-                self.modalities['atac-p'][sampkey] = peak_matrix[sampkey]
-                self.metadata.insert_row(prop)
+        
+        else: self.mudata.mod['atac-p'] = peak_matrix
 
     def run_atacp_filter_row_by_sum(self, run_on_samples = False, **kwargs):
         results = self.do_for_atac_peaks(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
-                self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+                self.modalities['atac-p'][k] = results[k]
+        else: self.mudata.mod['atac-p'] = results
 
     def run_atacp_filter_column_by_sum(self, run_on_samples = False, **kwargs):
         results = self.do_for_atac_peaks(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
-                self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+                self.modalities['atac-p'][k] = results[k]
+        else: self.mudata.mod['atac-p'] = results
 
     def run_atacp_annotate_peak(self, run_on_samples = False, **kwargs):
         self.do_for_atac_peaks(run_on_samples, st.atacp_annotate_peak, **kwargs)
@@ -1557,6 +1616,42 @@ class experiment:
     def run_atacp_retrieve_sequence(self, run_on_samples = False, **kwargs):
         self.do_for_atac_peaks(run_on_samples, st.atacp_retrieve_sequence, **kwargs)
 
+    def run_atacp_expression_linkage(self, run_on_samples = False, rna = 'rna', **kwargs):
+        if self.mudata and (not run_on_samples):
+            self.do_for_atac_peaks(run_on_samples, st.atacp_expression_linkage, rna = self['rna'], **kwargs)
+        else: self.do_for_atac_peaks(run_on_samples, st.atacp_expression_linkage, rna = self['rna'][rna], **kwargs)
+    
+    def run_atacp_motif_match(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_peaks(run_on_samples, st.atacp_motif_match, **kwargs)
+
+    def run_atacp_motif_enrichment(self, run_on_samples = False, **kwargs):
+        self.do_for_atac_peaks(run_on_samples, st.atacp_motif_enrichment, **kwargs)
+
+    def run_atacp_chromvar(self, run_on_samples = False, **kwargs):
+        chromvar = self.do_for_atac_peaks(run_on_samples, st.atacp_chromvar, **kwargs)
+        if isinstance(chromvar, dict):
+            for sampkey in chromvar.keys():
+                prop = self.metadata.dataframe.loc[
+                    (self.metadata.dataframe['sample'] == sampkey) &
+                    (self.metadata.dataframe['modality'] == 'atac-p'), :
+                ]
+
+                assert len(prop) == 1
+                prop = prop.iloc[0, :].copy()
+                prop['modality'] = 'atac-chromvar'
+                if not 'atac-chromvar' in self.modalities.keys():
+                    self.modalities['atac-chromvar'] = {}
+                
+                self.modalities['atac-chromvar'][sampkey] = chromvar[sampkey]
+                self.metadata.insert_row(prop)
+        
+        else: self.mudata.mod['atac-chromvar'] = chromvar
+    
+    def run_atacp_footprint(self, run_on_samples = False, atac = 'atac', **kwargs):
+        if self.mudata and (not run_on_samples):
+            self.do_for_atac_peaks(run_on_samples, st.atacp_footprint, adata_atac = self['atac'], **kwargs)
+        else: self.do_for_atac_peaks(run_on_samples, st.atacp_footprint, adata_atac = self['atac'][atac], **kwargs)
+
     def run_atacg_log_normalize(self, run_on_samples = False, **kwargs):
         self.do_for_atac_gene_activity(run_on_samples, st.rna_log_normalize, **kwargs)
 
@@ -1564,15 +1659,15 @@ class experiment:
         results = self.do_for_atac_gene_activity(run_on_samples, st.adata_filter_row_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
-                self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+                self.modalities['atac-g'][k] = results[k]
+        else: self.mudata.mod['atac-g'] = results
 
     def run_atacg_filter_column_by_sum(self, run_on_samples = False, **kwargs):
         results = self.do_for_atac_gene_activity(run_on_samples, st.adata_filter_column_by_sum, **kwargs)
         if isinstance(results, dict):
             for k in results.keys():
-                self.modalities['rna'][k] = results[k]
-        else: self.mudata['rna'] = results
+                self.modalities['atac-g'][k] = results[k]
+        else: self.mudata.mod['atac-g'] = results
 
     def run_atacg_impute_magic(self, run_on_samples = False, **kwargs):
         self.do_for_atac_gene_activity(run_on_samples, st.rna_impute_magic, **kwargs) 
@@ -1786,7 +1881,10 @@ class experiment:
         return fig
     
     def plot_rna_gsea_running_es(self, run_on_samples = False, **kwargs):
-        return self.plot_for_rna(run_on_samples, st.rna_plot_gsea_running_es, **kwargs)
+        return self.plot_for_rna(
+            run_on_samples, st.rna_plot_gsea_running_es, 
+            do_tight_layout = False, **kwargs
+        )
     
     def plot_rna_gsea_dotplot(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_gsea_dotplot, **kwargs)
@@ -1833,6 +1931,12 @@ class experiment:
     
     def plot_atac_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.rna_plot_embedding, **kwargs)
+    
+    def plot_atac_peaks(self, run_on_samples = False, **kwargs):
+        return self.plot_for_atac(
+            run_on_samples, st.atac_plot_peaks, dump = self.directory,
+            do_tight_layout = False, **kwargs
+        )
     
     def plot_atacg_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac_gene_activity(run_on_samples, st.rna_plot_embedding, **kwargs)
@@ -1941,13 +2045,20 @@ class experiment:
         os.makedirs(fdir, exist_ok = True)
         self.metadata.save(os.path.join(fdir, 'metadata.tsv'))
 
+        def save_h5mu_handle_recreate(h5, fpath):
+            try: h5.write_h5mu(fpath)
+            except:
+                warning('attempted to re-create the h5mu file.')
+                rec = mu.MuData({x: h5.mod[x] for x in h5.mod.keys()})
+                rec.write_h5mu(fpath)
+
         if self.mudata is not None:
             if self.subset is None:
                 info(f"main dataset write to {os.path.join(fdir, 'integrated.h5mu')}")
-                self.mudata.write_h5mu(os.path.join(fdir, 'integrated.h5mu'))
+                save_h5mu_handle_recreate(self.mudata, os.path.join(fdir, 'integrated.h5mu'))
             else: 
                 info(f"main dataset write to {os.path.join(fdir, 'subsets', self.subset + '.h5mu')}")
-                self.mudata.write_h5mu(os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
+                save_h5mu_handle_recreate(self.mudata, os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
 
         if not save_samples: return
         if self.modalities is not None:
@@ -1959,6 +2070,13 @@ class experiment:
                     self.modalities[key][sample].write_h5ad(
                         os.path.join(fdir, key, f'{sample}.h5ad')
                     )
+        
+        # save specification and dataset information
+        import pickle
+        with open(os.path.join(fdir, 'spec.pkl'), 'wb') as fspec:
+            pickle.dump({
+                'spec': self.version
+            }, fspec)
 
 
     def push(
@@ -2049,15 +2167,82 @@ class experiment:
         return merge
     
 
+    def link_barcode(
+        self, mod1, sample1, barcode1, mod2, sample2, barcode2, 
+        unify_sample = 'multi'
+    ):
+
+        if self.mudata:
+            mod1obs = self.mudata.mod[mod1].obs_names.tolist()
+            mod2obs = self.mudata.mod[mod2].obs_names.tolist()
+            bc1 = self.mudata.mod[mod1].obs[barcode1].tolist()
+            bc2 = self.mudata.mod[mod2].obs[barcode2].tolist()
+            purebc2 = [x.replace(sample2 + ':', '') for x in bc2 if x.startswith(sample2 + ':')]
+
+            uname_mapping = {}
+            counter = 1
+            for x1 in bc1:
+                if x1.startswith(sample1 + ':'):
+                    if x1.replace(sample1 + ':', '') in purebc2:
+                        uname_mapping[sample1 + ':' + x1.replace(sample1 + ':', '')] = unify_sample + ':' + str(counter)
+                        uname_mapping[sample2 + ':' + x1.replace(sample1 + ':', '')] = unify_sample + ':' + str(counter)
+                        counter += 1
+            
+            mod1obs = [uname_mapping[x] if x in uname_mapping.keys() else y for x, y in zip(bc1, mod1obs)]
+            mod2obs = [uname_mapping[x] if x in uname_mapping.keys() else y for x, y in zip(bc2, mod2obs)]
+            
+            n_replace = 0
+            for x in mod1obs:
+                if x.startswith(unify_sample + ':'): n_replace += 1
+
+            info(f'unified {n_replace} from two modalities.') 
+            self.mudata.mod[mod1].obs_names = mod1obs
+            self.mudata.mod[mod2].obs_names = mod2obs
+        
+        else:
+            mod1obs = self[mod1][sample1].obs_names.tolist()
+            mod2obs = self[mod2][sample2].obs_names.tolist()
+            bc1 = self[mod1][sample1].obs[barcode1].tolist()
+            bc2 = self[mod2][sample2].obs[barcode2].tolist()
+            purebc2 = [x.replace(sample2 + ':', '') for x in bc2 if x.startswith(sample2 + ':')]
+
+            uname_mapping = {}
+            counter = 1
+            for x1 in bc1:
+                if x1.startswith(sample1 + ':'):
+                    if x1.replace(sample1 + ':', '') in purebc2:
+                        uname_mapping[sample1 + ':' + x1.replace(sample1 + ':', '')] = unify_sample + ':' + str(counter)
+                        uname_mapping[sample2 + ':' + x1.replace(sample1 + ':', '')] = unify_sample + ':' + str(counter)
+                        counter += 1
+            
+            mod1obs = [uname_mapping[x] if x in uname_mapping.keys() else y for x, y in zip(bc1, mod1obs)]
+            mod2obs = [uname_mapping[x] if x in uname_mapping.keys() else y for x, y in zip(bc2, mod2obs)]
+            n_replace = 0
+            for x in mod1obs:
+                if x.startswith(unify_sample + ':'): n_replace += 1
+
+            info(f'unified {n_replace} from two modalities.') 
+            self[mod1][sample1].obs_names = mod1obs
+            self[mod2][sample2].obs_names = mod2obs
+
+
     # magic accessors
 
     def __getitem__(self, key):
-        self.check_merged()
-        if key in self.mudata.mod.keys():
-            return self.mudata[key]
-        else: 
-            warning(f'key must be one of [{", ".join(list(self.mudata.mod.keys()))}]')
-            error(f'no integrated modality named `{key}`.')
+
+        if self.mudata:
+            if key in self.mudata.mod.keys():
+                return self.mudata[key]
+            else: 
+                warning(f'key must be one of [{", ".join(list(self.mudata.mod.keys()))}]')
+                error(f'no integrated modality named `{key}`.')
+        
+        else:
+            if key in self.modalities.keys():
+                return self.modalities[key]
+            else:
+                warning(f'key must be one of [{", ".join(list(self.modalities.keys()))}]')
+                error(f'no modality named `{key}` (dataset not integrated).')
             
 
     def __repr__(self):
@@ -2144,6 +2329,20 @@ class experiment:
         
         else:
             print(red('[*]'), 'composed of samples:')
+            len_mod = 2
+            len_batch = 2
+            
+            for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
+                self.metadata.dataframe['location'], 
+                self.metadata.dataframe['sample'], 
+                self.metadata.dataframe['batch'], 
+                self.metadata.dataframe['group'], 
+                self.metadata.dataframe['modality'], 
+                self.metadata.dataframe['taxa']
+            ):
+                if len(i_mod) > len_mod: len_mod = len(i_mod)
+                if len(i_batch) > len_batch: len_batch = len(i_batch)
+
             for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
                 self.metadata.dataframe['location'], 
                 self.metadata.dataframe['sample'], 
@@ -2162,14 +2361,14 @@ class experiment:
                 p_sample = i_sample if len(i_sample) < 30 else i_sample[:27] + ' ..'
                 p_batch = i_batch if len(i_batch) < 30 else i_batch[:27] + ' ..'
                 print(
-                    f'  {p_sample:30}', cyan(f'{i_mod:4}'), yellow(f'{i_taxa:4}'),
-                    f'batch {green(f"{p_batch:30}")}',
+                    f'  {p_sample:30}', cyan(f'{i_mod:13}'), yellow(f'{i_taxa:4}'),
+                    f'batch {green(f"{p_batch:12}")}',
                     red('dataset not loaded') if not loaded else 
                     f'{green(str(self.modalities[i_mod][i_sample].n_obs))} × ' +
                     f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}'
                 )
 
-        return f'<exprmat.reader.experiment> ({len(self.metadata.dataframe)} samples)'
+        return f'<exprmat.reader.experiment/{self.version if self.version else 1}> ({len(self.metadata.dataframe)} samples)'
 
     pass
 
@@ -2215,12 +2414,27 @@ def load_experiment(direc, load_samples = True, load_subset = None):
         if os.path.exists(os.path.join(direc, 'subsets', load_subset + '.h5mu')):
             mdata = mu.read_h5mu(os.path.join(direc, 'subsets', load_subset + '.h5mu'))
 
+    # load specification
+    version = load_experiment_specification(direc)
+    
     expr = experiment(
         meta = meta, 
         mudata = mdata, 
         modalities = modalities, 
         dump = direc,
-        subset = subset
+        subset = subset,
+        version = version
     )
 
     return expr
+
+
+def load_experiment_specification(direc):
+    
+    import pickle
+    if os.path.exists(os.path.join(direc, 'spec.pkl')):
+        with open(os.path.join(direc, 'spec.pkl'), 'rb') as fspec:
+            return pickle.load(fspec)['spec']
+    
+    # the oldest specification, before the versioning system implemented.
+    else: return 1 

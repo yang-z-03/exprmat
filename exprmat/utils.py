@@ -8,7 +8,7 @@ import numbers
 import pandas as pd
 
 import numba
-from exprmat.ansi import error, warning, info
+from exprmat.ansi import error, warning, info, pprog
 from exprmat.configuration import default as cfg
 
 
@@ -96,9 +96,9 @@ def find_variable(adata, gene_name, layer = 'X'):
         else: vec = X.reshape(-1)
 
      # try some conventions
-    elif 'ensembl' in adata.var.keys() and \
-        gene_name in adata.var['ensembl'].tolist():
-        genes = adata.var['ensembl'].tolist()
+    elif 'id' in adata.var.keys() and \
+        gene_name in adata.var['id'].tolist():
+        genes = adata.var['id'].tolist()
         X = adata.X[:, genes.index(gene_name)] if layer == 'X' \
             else adata[:, genes.index(gene_name)].layers[layer]
         
@@ -124,8 +124,8 @@ def find_gene_index(X, genes):
             if 'gene' in X.var.keys():
                 for i, z in enumerate(X.var['gene'].tolist()):
                     if str(z) != 'nan': query[str(z)] = i
-            if 'ensembl' in X.var.keys():
-                for i, z in enumerate(X.var['ensembl'].tolist()):
+            if 'id' in X.var.keys():
+                for i, z in enumerate(X.var['id'].tolist()):
                     if str(z) != 'nan': query[str(z)] = i
             
             indices = []
@@ -161,7 +161,7 @@ def select_columns(X, cols):
 
 def translate_variables(adata, gene_list, layer = 'X'):
     
-    ensembls = adata.var['ensembl'].tolist()
+    ensembls = adata.var['id'].tolist()
     index = adata.var_names.tolist()
     names = adata.var['gene'].tolist()
 
@@ -454,7 +454,6 @@ def anndata_rs_par(adatas, func, n_jobs = 4):
 
 def anndata_rs_ipar(inputs, func, n_jobs = 4):
 
-    from rich.progress import track
     import exprmat.snapatac as internal
 
     exist_in_memory_adata = False
@@ -466,7 +465,7 @@ def anndata_rs_ipar(inputs, func, n_jobs = 4):
     if exist_in_memory_adata:
         warning('in-memory anndata cannot be loaded with parallel.')
         warning('you can use backed anndata with multiprocessing')
-        return [func((i, adata)) for i, adata in track(inputs, description = 'loading anndata')]
+        return [func((i, adata)) for i, adata in pprog(inputs, desc = 'processing anndata')]
     
     else:
         from multiprocess import get_context
@@ -483,7 +482,7 @@ def anndata_rs_ipar(inputs, func, n_jobs = 4):
             adata.close()
 
         with get_context("spawn").Pool(n_jobs) as p:
-            result = list(track(p.imap(_func, files), total = len(files), description = 'loading anndata'))
+            result = list(pprog(p.imap(_func, files), total = len(files), desc = 'processing anndata'))
         
         # reopen the files if they were closed
         for _, adata in inputs:

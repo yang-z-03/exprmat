@@ -223,7 +223,7 @@ def call_peak_from_fragments(
     options.log_qvalue = log(qvalue, 10) * -1
     options.PE_MODE = False
 
-    options.gsize = adata.uns['assembly.size'].sum()
+    options.gsize = adata.uns['assembly.size']['len'].sum()
     options.maxgap = 30 # The maximum allowed gap between two nearby regions to be merged
     options.minlen = extsize if min_len is None else min_len
     options.shift = shift
@@ -333,27 +333,139 @@ def merge_peaks(
 def parallel_map(mapper, args, nprocs):
     import time
     from multiprocess import get_context
-    from tqdm import tqdm
-
+    
     with get_context("spawn").Pool(nprocs) as pool:
 
         procs = set(pool._pool)
         jobs = [(i, pool.apply_async(mapper, x)) for i, x in enumerate(args)]
         results = []
 
-        with tqdm(total = len(jobs)) as pbar:
-            while len(jobs) > 0:
-                if any(map(lambda p: not p.is_alive(), procs)):
-                    raise RuntimeError("some worker process died unexpectedly.")
+        while len(jobs) > 0:
+            if any(map(lambda p: not p.is_alive(), procs)):
+                raise RuntimeError("some worker process died unexpectedly.")
 
-                remaining = []
-                for i, job in jobs:
-                    if job.ready():
-                        results.append((i, job.get()))
-                        pbar.update(1)
-                    else: remaining.append((i, job))
-                
-                jobs = remaining
-                time.sleep(0.5)
+            remaining = []
+            for i, job in jobs:
+                if job.ready():
+                    results.append((i, job.get()))
+                else: remaining.append((i, job))
+            
+            jobs = remaining
+            time.sleep(0.5)
 
         return [x for _,x in sorted(results, key = lambda x: x[0])]
+
+
+def make_peak_matrix(
+    adata: internal.AnnData | internal.AnnDataSet,
+    *,
+    use_rep: str | list[str] | None = None,
+    inplace: bool = False,
+    file: Path | None = None,
+    backend = 'hdf5',
+    peak_file: Path | None = None,
+    chunk_size: int = 500,
+    use_x: bool = False,
+    min_frag_size: int | None = None,
+    max_frag_size: int | None = None,
+    counting_strategy = 'paired-insertion',
+    value_type = 'target',
+    summary_type = 'sum',
+) -> internal.AnnData:
+    """
+    Generate cell by peak count matrix.
+
+    Parameters
+    ----------
+    adata
+        The (annotated) data matrix of shape `n_obs` x `n_vars`.
+        Rows correspond to cells and columns to regions.
+
+    use_rep
+        This is used to read peak information from `.uns[use_rep]`.
+        The peaks can also be provided by a list of strings: ["chr1:1-100", "chr2:2-200"].
+
+    inplace
+        Whether to add the tile matrix to the AnnData object or return a new AnnData object.
+
+    file
+        File name of the output h5ad file used to store the result. If provided,
+        result will be saved to a backed AnnData, otherwise an in-memory AnnData
+        is used. This has no effect when `inplace = True`.
+
+    backend
+        The backend to use for storing the result. If `None`, the default backend will be used.
+
+    peak_file
+        Bed file containing the peaks. If provided, peak information will be read from this file.
+
+    chunk_size
+        Chunk size
+
+    use_x
+        If True, use the matrix stored in `.X` as raw counts. Otherwise the 
+        `.obsm['insertion']` is used.
+
+    min_frag_size
+        Minimum fragment size to include.
+
+    max_frag_size
+        Maximum fragment size to include.
+
+    counting_strategy
+        The strategy to compute feature counts. It must be one of the following:
+        "fragment", "insertion", or "paired-insertion". "fragment" means the feature counts are 
+        assigned based on the number of fragments that overlap with a region of interest. 
+        "insertion" means the feature counts are assigned based on the number of insertions 
+        that overlap with a region of interest. "paired-insertion" is similar to "insertion", 
+        but it only counts the insertions once if the pair of insertions of a fragment are both 
+        within the same region of interest. Note that this parameter has no effect if input are 
+        single-end reads.
+
+    value_type
+        The type of value to use from `.obsm['_values']`, only available when data is imported 
+        using `import_values(...)`. It must be one of the following: "target", "total", or "fraction". 
+        "target" means the value is the number of recrods that are with postive measurements, 
+        e.g., number of methylated bases. "total" means the value is the total number of measurements, 
+        e.g., methylated bases plus unmethylated bases. "fraction" means the value is the fraction of 
+        the records that are positive, e.g., the fraction of methylated bases.
+
+    summary_type
+        The type of summary to use when multiple values are found in a bin. This parameter
+        is only used when `.obsm['_values']` exists, which is created by `import_values(...)`.
+        It must be one of the following: "sum" or "mean".
+
+    """
+    import gzip
+
+    if peak_file is not None and use_rep is not None:
+        raise RuntimeError("'peak_file' and 'use_rep' cannot be both set") 
+
+    if use_rep is None and peak_file is None:
+        use_rep = "peaks"
+
+    if isinstance(use_rep, str):
+        df = adata.uns[use_rep]
+        peaks = df[df.columns[0]]
+    else: peaks = use_rep
+
+    if peak_file is not None:
+        if Path(peak_file).suffix == ".gz":
+            with gzip.open(peak_file, 'rt') as f:
+                peaks = [line.strip() for line in f]
+        else: 
+            with open(peak_file, 'r') as f:
+                peaks = [line.strip() for line in f]
+
+    if inplace: out = None
+    elif file is None:
+        if adata.isbacked: out = AnnData(obs = adata.obs[:].to_pandas())
+        else: out = AnnData(obs = adata.obs[:])
+    else: out = internal.AnnData(filename = file, backend = backend, obs = adata.obs[:])
+    
+    internal.mk_peak_matrix(
+        adata, peaks, chunk_size, use_x, counting_strategy, value_type, summary_type, 
+        min_frag_size, max_frag_size, out
+    )
+    
+    return out

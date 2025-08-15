@@ -24,18 +24,21 @@ class Configuration:
         # target taxa
 
         self.config['taxa.reference'] = {
-            'mm10': 'mmu', # alias of grcm38
+            'mm10': 'mmu',   # the slightly modified version from ucsc based on grcm38
             'grcm39': 'mmu',
             'grcm38': 'mmu',
 
-            'hg19': 'hsa', # alias of grch37
+            'hg19': 'hsa',   # the slightly modified version from ucsc based on grch37
             'grch37': 'hsa',
             'grch38': 'hsa',
+
+            'dm6': 'dme'
         }
 
         self.config['default.assembly'] = {
             'mmu': 'grcm39',
-            'hsa': 'grch38'
+            'hsa': 'grch38',
+            'dme': 'dm6'
         }
 
         self.config['max.image'] = int(10000 * 50000)

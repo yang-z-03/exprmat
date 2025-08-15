@@ -1,10 +1,19 @@
 
+# the file specification, defined as the earlieast version to handle
+# current file standard. (revision number). specification versions are not
+# continuous. historically taken [1, 39]
+
+SPECIFICATION = 39
+
+import importlib.metadata
+ver_string = importlib.metadata.version("exprmat")
+MAJOR, MINOR, REVISION = [int(x) for x in ver_string.split('.')]
+
 import os
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['GOTO_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 
-import importlib.metadata
 import mudata as mu
 import anndata as ad
 import scanpy as sc
@@ -100,6 +109,7 @@ basepath = config['data']
 from exprmat.utils import setup_styles
 from exprmat.reader.experiment import experiment, load_experiment
 from exprmat.reader.metadata import metadata, load_metadata
+from exprmat.ansi import error, warning, info, pprog, pproga
 
 setup_styles()
 
@@ -154,10 +164,7 @@ def version():
     import platform
     from exprmat.ansi import info, error, format_file_size
 
-    ver_string = importlib.metadata.version("exprmat")
     db_ver = version_db()
-
-    MAJOR, MINOR, REVISION = [int(x) for x in ver_string.split('.')]
     info(f'exprmat {MAJOR}.{MINOR}.{REVISION} / exprmat-db {db_ver if db_ver is not None else "(Not installed)"}')
     info(f'os: {os.name} ({sys.platform})  platform version: {platform.release()}')
     info(f'loaded configuration from {finder}')
@@ -190,6 +197,12 @@ __all__ = [
     'load_metadata',
     'version',
     'memory',
+    'cuda',
     'setwd',
-    'getwd'
+    'getwd',
+    'error',
+    'warning',
+    'info',
+    'pprog',
+    'pproga'
 ]

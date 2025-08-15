@@ -59,13 +59,13 @@ def translate_id(taxa, genes, idfrom = 'entrez', idto = 'ugene', keep_nones = Tr
 
         # construct multi-platform convertion table.
         gtable = get_genome(taxa)
-        gtable = gtable[['ensembl', 'gene']].copy()
+        gtable = gtable[['id', 'gene']].copy()
         gtable['ugene'] = gtable.index.tolist()
-        gtable.index = gtable['ensembl'].tolist()
+        gtable.index = gtable['id'].tolist()
         gtable['uppercase'] = gtable['gene'].str.upper().tolist()
 
         # deduplicate
-        gtable = gtable.loc[~ gtable['ensembl'].duplicated(), :].copy()
+        gtable = gtable.loc[~ gtable['id'].duplicated(), :].copy()
         gtable['ugene'] = taxa + ':' + gtable['ugene']
 
         entrez = pandas.read_table(

@@ -99,7 +99,7 @@ def rna_qc(
     '''
     
     # manual calculations of ribosomal and mitochondrial genes
-    mask_mito = [x == mt_seqid for x in adata.var['.seqid'].tolist()]
+    mask_mito = [x == mt_seqid for x in adata.var['chr'].tolist()]
     mask_ribo = [False if isinstance(x, float) else \
                     x.lower().startswith('rps') or x.lower().startswith('rpl') \
                     for x in adata.var['gene'].tolist()] if ribo_genes is None else \

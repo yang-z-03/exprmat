@@ -28,23 +28,28 @@ def get_genome(taxa):
 
     if taxa not in genome.keys(): genome[taxa] = {}
     if 'genes' in genome[taxa].keys(): return genome[taxa]['genes']
-    genome[taxa]['genes'] = pandas.read_table(
-        os.path.join(basepath, f'{taxa}', 'genome.tsv.gz'),
-        # set low memory to false to allow correct adjustment to mixed dtype.
-        index_col = '.ugene', dtype = {'.seqid': str}, low_memory = False
+    genome[taxa]['genes'] = pandas.read_feather(
+        os.path.join(basepath, f'{taxa}', 'genome.feather')
     )
 
+    genome[taxa]['genes'].index = genome[taxa]['genes']['uid'].tolist()
     return genome[taxa]['genes']
 
 
-def get_genome_size(assembly):
+def get_genome_size(assembly, as_dataframe = False):
 
     import json
     taxa = cfg['taxa.reference'][assembly.lower()]
     path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'size.json')
     with open(path, 'r', encoding = 'utf-8') as f:
         sizes = json.load(f)
-    return sizes
+    
+    if as_dataframe: return pandas.DataFrame({
+        'seqname': sizes.keys(),
+        'len': [sizes[k] for k in sizes.keys()]
+    })
+
+    else: return sizes
 
 
 def get_genome_gff_fname(assembly):
@@ -80,12 +85,13 @@ def get_genome_ranges(assembly, fname, as_grange = False):
     taxa = cfg['taxa.reference'][assembly.lower()]
     path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), f'{fname}.feather')
     feather = pandas.read_feather(path)
+    feather = feather.loc[feather['end'] - feather['start'] > 0, :].copy()
     
     if as_grange: 
         import genomicranges
         return genomicranges.GenomicRanges.from_pandas(
-            feather[['ucsc', 'start', 'end', 'strand', 'gene']].rename(
-            columns = {'ucsc': 'seqnames', 'start': 'starts', 'end': 'ends'}
+            feather[['chr', 'start', 'end', 'strand', 'gene']].rename(
+            columns = {'chr': 'seqnames', 'start': 'starts', 'end': 'ends'}
         ))
     else: return feather
 
@@ -185,7 +191,7 @@ def get_mapper_ensembl(taxa):
     else:
 
         gtable = get_genome(taxa)
-        ensembl_list = gtable[['ensembl']].values.transpose()[0].tolist()
+        ensembl_list = gtable[['id']].values.transpose()[0].tolist()
         id_list = gtable.index.tolist()
         ensembl_finder = {}
 
