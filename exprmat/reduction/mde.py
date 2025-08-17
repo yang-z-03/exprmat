@@ -8,7 +8,11 @@ from exprmat.ansi import warning
 
 
 def mde(
-    data, device: Optional[Literal['cpu', 'cuda']] = None, **kwargs,
+    data, device: Optional[Literal['cpu', 'cuda']] = None, 
+    n_dims = 2, repulsive_fraction = 0.7, verbose = False,
+    n_neighbors = 15, eps: float = 0.00001, max_iter: int = 300, memory_size: int = 10,
+    constraint = None, random_seed = 42,
+    **kwargs,
 ) -> np.ndarray:
     '''
     This function is included in scvi-tools to provide an alternative to UMAP/TSNE that is GPU-
@@ -35,19 +39,22 @@ def mde(
     if isinstance(data, pd.DataFrame):
         data = data.values
 
-    device = 'cpu' if not torch.cuda.is_available() else 'cuda'
+    if device is None:
+        device = 'cpu' if not torch.cuda.is_available() else 'cuda'
 
     default_args = {
-        'embedding_dim': 2,
-        'constraint': pymde.Standardized(),
-        'repulsive_fraction': 0.7,
-        'verbose': False,
+        'embedding_dim': n_dims,
+        'constraint': constraint,
+        'repulsive_fraction': repulsive_fraction,
+        'verbose': verbose,
         'device': device,
-        'n_neighbors': 15,
+        'n_neighbors': n_neighbors,
     }
 
-    default_args.update(kwargs)
-    emb = pymde.preserve_neighbors(data, **default_args).embed(verbose = default_args['verbose'])
+    problem = pymde.preserve_neighbors(data, **default_args)
+
+    torch.random.manual_seed(random_seed)
+    emb = problem.embed(verbose = verbose, eps = eps, max_iter = max_iter, memory_size = memory_size)
 
     if isinstance(emb, torch.Tensor):
         emb = emb.cpu().numpy()

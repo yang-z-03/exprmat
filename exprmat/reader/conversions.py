@@ -64,7 +64,7 @@ def bam_to_fragments(bam, sample_name, is_paired = True):
 
     if not os.path.exists(bam.replace('.bam', '.fragments.tsv.gz')):
         info(f'making fragments file ...')
-        from exprmat.reader.peaks import make_fragment_file
+        from exprmat.peaks.common import make_fragment_file
         make_fragment_file(
             bam.replace('.bam', '.sample.bam'), bam.replace('.bam', '.fragments.tsv.gz'),
             is_paired = is_paired, barcode_tag = 'RG',

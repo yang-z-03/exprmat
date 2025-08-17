@@ -10,22 +10,60 @@ from exprmat.reduction.nn import compute_neighbors
 
 def run_pca(
     adata, *, layer = 'scaled', n_comps = 50, keep_sparse = False, 
-    random_state = 42, svd_solver = 'arpack', key_added = 'pca'
+    random_state = 42, svd_solver = 'arpack', key_added = 'pca',
+    use_gpu = False
 ):
-    S = choose_layer(adata, layer = layer)
-    emb, comps, variance, pct_variance, singular, params, model = pca(
-        S, n_comp = n_comps, keep_sparse = keep_sparse, 
-        random_state = random_state, svd_solver = svd_solver
-    )
+    if use_gpu:
+        
+        # we do not encourage shipping such a big, condense matrix (scaled data)
+        # onto the gpu. instead we prefer using models that utilizes gpu directly
+        # from sparse data (e.g. scVI)
 
-    adata.obsm[key_added] = emb
-    adata.varm[key_added] = comps.T
-    adata.uns[key_added] = {
-        'variance': variance,
-        'pct.variance': pct_variance,
-        'singular': singular,
-        'params': params
-    }
+        if adata.shape[0] * adata.shape[1] >= 1024 * 1024 * 1024:
+            from exprmat.utils import configure_vram_flavor
+            configure_vram_flavor('ram')
+
+        import rapids_singlecell as rsc
+        import anndata as ad
+        import cupyx as cpx
+
+        S = choose_layer(adata, layer = layer)
+        gpu_adata = ad.AnnData(X = S)
+        rsc.get.anndata_to_GPU(gpu_adata)
+        
+        rsc.pp.pca(
+            adata = gpu_adata, n_comps = n_comps, layer = None,
+            svd_solver = None, key_added = 'pca'
+        )
+
+        # copy to adata
+        adata.obsm[key_added] = gpu_adata.obsm['pca']
+        adata.varm[key_added] = gpu_adata.varm['pca']
+        adata.uns[key_added] = {
+            'variance': gpu_adata.uns['pca']['variance'],
+            'pct.variance': gpu_adata.uns['pca']['variance_ratio'],
+            'singular': None,
+            'params': {
+                'n_comps': n_comps,
+                'gpu': True
+            }
+        }
+
+    else:
+        S = choose_layer(adata, layer = layer)
+        emb, comps, variance, pct_variance, singular, params, model = pca(
+            S, n_comp = n_comps, keep_sparse = keep_sparse, 
+            random_state = random_state, svd_solver = svd_solver
+        )
+
+        adata.obsm[key_added] = emb
+        adata.varm[key_added] = comps.T
+        adata.uns[key_added] = {
+            'variance': variance,
+            'pct.variance': pct_variance,
+            'singular': singular,
+            'params': params
+        }
 
     return
 
@@ -34,35 +72,94 @@ def run_knn(
     adata, *, use_rep = 'pca', n_comps = None,
     n_neighbors: int = 30, knn: bool = True, method = "umap",
     transformer = None, metric = "euclidean", metric_kwds = {},
-    random_state = 0, key_added = 'neighbors', n_jobs = -1
+    random_state = 0, key_added = 'neighbors', n_jobs = -1,
+
+    # only used in gpu accelerated version
+    gpu_approx_method = 'nn_descent', gpu_approx_method_kwds = {},
+    use_gpu = False
 ):
     emb = choose_representation(adata, use_rep = use_rep, n_pcs = n_comps)
-    knn_indices, knn_dist, dist, conn, connected_comp, n_conn_comp = compute_neighbors(
-        emb, n_neighbors = n_neighbors, knn = knn, method = method,
-        transformer = transformer, metric = metric, metric_kwds = metric_kwds,
-        random_state = random_state, n_jobs = n_jobs
-    )
 
-    adata.uns[key_added] = {
-        'connectivities_key': 'connectivities' if key_added == 'neighbors' else 'connectivities.' + key_added,
-        'neighbors_key': 'neighbors' if key_added == 'neighbors' else 'neighbors.' + key_added,
-        'distances_key': 'distances' if key_added == 'neighbors' else 'distances.' + key_added,
-        'knn_key': 'knn' if key_added == 'neighbors' else 'knn.' + key_added,
-        'knn_distances_key': 'knn.d' if key_added == 'neighbors' else 'knn.d.' + key_added,
-        'metric': metric,
-        'metric_kwds': metric_kwds,
-        'random_state': random_state,
-        'knn': knn,
-        'method': method,
-        'n_neighbors': n_neighbors,
-        'use_rep': use_rep,
-        'n_comps': n_comps if n_comps is not None else emb.shape[1]
-    }
+    if use_gpu:
 
-    adata.obsp[adata.uns[key_added]['connectivities_key']] = conn
-    adata.obsp[adata.uns[key_added]['distances_key']] = dist
-    adata.obsm[adata.uns[key_added]['knn_key']] = knn_indices
-    adata.obsm[adata.uns[key_added]['knn_distances_key']] = knn_dist
+        # compute a neighborhood graph of observations with cuml.
+        # the neighbor search efficiency of this heavily relies on cuml, which also 
+        # provides a method for estimating connectivities of data points - the 
+        # connectivity of the manifold.
+
+        # create a pseudo adata
+        import rapids_singlecell as rsc
+        import anndata as ad
+        import cupyx.scipy.sparse as sp
+
+        emb_data = ad.AnnData(X = sp.csr_matrix(adata.shape, dtype = 'float32'))
+        emb_data.obsm['emb'] = emb
+
+        rsc.pp.neighbors(
+            adata = emb_data, n_neighbors = n_neighbors, n_pcs = None,
+            use_rep = 'emb', random_state = random_state,
+            algorithm = gpu_approx_method, metric = metric,
+            metric_kwds = metric_kwds, key_added = None,
+            algorithm_kwds = gpu_approx_method_kwds
+        )
+
+        adata.uns[key_added] = {
+            'connectivities_key': 'connectivities' if key_added == 'neighbors' else 'connectivities.' + key_added,
+            'neighbors_key': 'neighbors' if key_added == 'neighbors' else 'neighbors.' + key_added,
+            'distances_key': 'distances' if key_added == 'neighbors' else 'distances.' + key_added,
+            'knn_key': 'knn' if key_added == 'neighbors' else 'knn.' + key_added,
+            'knn_distances_key': 'knn.d' if key_added == 'neighbors' else 'knn.d.' + key_added,
+            'metric': metric,
+            'metric_kwds': metric_kwds,
+            'random_state': random_state,
+            'knn': knn,
+            'method': method,
+            'n_neighbors': n_neighbors,
+            'use_rep': use_rep,
+            'n_comps': n_comps if n_comps is not None else emb.shape[1],
+            'gpu': True,
+            'gpu_approx_method': gpu_approx_method,
+            'gpu_approx_method_kwds': gpu_approx_method_kwds
+        }
+
+        adata.obsp[adata.uns[key_added]['connectivities_key']] = emb_data.obsp['connectivities']
+        adata.obsp[adata.uns[key_added]['distances_key']] = emb_data.obsp['distances']
+        
+        from exprmat.reduction.nn import get_indices_distances_from_sparse_matrix
+        knn_indices, knn_dist = get_indices_distances_from_sparse_matrix(
+            emb_data.obsp['distances'], n_neighbors
+        )
+
+        adata.obsm[adata.uns[key_added]['knn_key']] = knn_indices
+        adata.obsm[adata.uns[key_added]['knn_distances_key']] = knn_dist
+
+    else:
+        knn_indices, knn_dist, dist, conn, connected_comp, n_conn_comp = compute_neighbors(
+            emb, n_neighbors = n_neighbors, knn = knn, method = method,
+            transformer = transformer, metric = metric, metric_kwds = metric_kwds,
+            random_state = random_state, n_jobs = n_jobs
+        )
+
+        adata.uns[key_added] = {
+            'connectivities_key': 'connectivities' if key_added == 'neighbors' else 'connectivities.' + key_added,
+            'neighbors_key': 'neighbors' if key_added == 'neighbors' else 'neighbors.' + key_added,
+            'distances_key': 'distances' if key_added == 'neighbors' else 'distances.' + key_added,
+            'knn_key': 'knn' if key_added == 'neighbors' else 'knn.' + key_added,
+            'knn_distances_key': 'knn.d' if key_added == 'neighbors' else 'knn.d.' + key_added,
+            'metric': metric,
+            'metric_kwds': metric_kwds,
+            'random_state': random_state,
+            'knn': knn,
+            'method': method,
+            'n_neighbors': n_neighbors,
+            'use_rep': use_rep,
+            'n_comps': n_comps if n_comps is not None else emb.shape[1]
+        }
+
+        adata.obsp[adata.uns[key_added]['connectivities_key']] = conn
+        adata.obsp[adata.uns[key_added]['distances_key']] = dist
+        adata.obsm[adata.uns[key_added]['knn_key']] = knn_indices
+        adata.obsm[adata.uns[key_added]['knn_distances_key']] = knn_dist
     return
 
 

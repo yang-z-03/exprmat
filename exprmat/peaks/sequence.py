@@ -2,7 +2,7 @@
 import os
 from exprmat import pprog
 from exprmat.data.finders import basepath
-from exprmat.configuration import default
+from exprmat import config as default
 
 
 def query_sequence(adata, seqlen = None):

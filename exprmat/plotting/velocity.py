@@ -17,6 +17,7 @@ from exprmat.dynamics.moments import second_order_moments
 from exprmat.plotting import embedding
 from exprmat.utils import translate_variables
 from exprmat.ansi import error, warning, info
+from exprmat.plotting.palettes import mpl
 
 
 def make_unique_list(key, allow_array = False):
@@ -499,7 +500,7 @@ def proportions(
     counts_layers = np.array([counts / counts_total for counts in counts_layers])
 
     gspec = pl.GridSpec(1, 2, pl.figure(None, figsize, dpi=dpi))
-    colors = pl.get_cmap("tab20b")(np.linspace(0.10, 0.65, len(layers_keys)))
+    colors = mpl("tab20b")(np.linspace(0.10, 0.65, len(layers_keys)))
 
     # pie chart of total abundances
     ax = pl.subplot(gspec[0])

@@ -20,7 +20,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.39"
+version = "0.1.40"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -82,10 +82,9 @@ dependencies = [
     'graphtools',
     'bincsync >= 0.3.0',
     'pyBigWig',
+    'spatialdata',
     'loompy',
-    'squidpy',
     'zarr',
-    'spatialdata-io',
     'scikit-image',
     'spatial-image',
     'multiscale-spatial-image',
@@ -103,7 +102,8 @@ dependencies = [
     'pyfastx',
     'genomicranges',
     'rustworkx',
-    'xgboost'
+    'xgboost',
+    'dask-expr >= 2.0'
 ]
 
 [project.optional-dependencies]
@@ -112,6 +112,28 @@ dev = [
     'twine',
     'ipykernel',
     'ipytree'
+]
+
+cuda12 = [
+
+    # rapids
+    "cudf-cu12 == 25.8.*",
+    "dask-cudf-cu12 == 25.8.*", 
+    "cuml-cu12 == 25.8.*",
+    "cugraph-cu12 == 25.8.*",
+    "nx-cugraph-cu12 == 25.8.*",
+    "cuxfilter-cu12 == 25.8.*",
+    "cucim-cu12 == 25.8.*", 
+    "pylibraft-cu12 == 25.8.*", 
+    "raft-dask-cu12 == 25.8.*",
+    "cuvs-cu12 == 25.8.*",
+    "nx-cugraph-cu12 == 25.8.*",
+
+    # cupy
+    "cupy-cuda12x",
+
+    # rapids-singlecell
+    "rapids-singlecell"
 ]
 
 [project.urls]

@@ -18,6 +18,8 @@ def leiden(
     neighbors_key: str | None = None,
     obsp: str | None = None,
     flavor = 'igraph',
+    use_gpu = False,
+    theta = 1,
     ** clustering_args,
 ) -> ad.AnnData | None:
     '''
@@ -86,11 +88,27 @@ def leiden(
         passes arguments to the `partition_type`) or `igraph.Graph.community_leiden` from `igraph`.
     '''
     
-    return sc.tl.leiden(
-        adata, resolution = resolution,
-        restrict_to = restrict_to, random_state = random_state,
-        key_added = key_added, adjacency = adjacency, directed = directed,
-        use_weights = use_weights, n_iterations = n_iterations,
-        partition_type = partition_type, neighbors_key = neighbors_key,
-        copy = False, flavor = flavor, **clustering_args
-    )
+    if use_gpu:
+        import rapids_singlecell as rsc
+        return rsc.tl.leiden(
+            adata, resolution = resolution,
+            restrict_to = restrict_to, random_state = random_state,
+            key_added = key_added, adjacency = adjacency,
+            use_weights = use_weights, 
+            # the n_iterations in igraph takes -1, 0, 1 and 2 as magic numbers
+            # not real number of iterations. indeed, the gpu implementation
+            # supports only real iterations, by default 200.
+            n_iterations = n_iterations if n_iterations > 2 else 200,
+            neighbors_key = neighbors_key, theta = theta,
+            copy = False
+        )
+
+    else:
+        return sc.tl.leiden(
+            adata, resolution = resolution,
+            restrict_to = restrict_to, random_state = random_state,
+            key_added = key_added, adjacency = adjacency, directed = directed,
+            use_weights = use_weights, n_iterations = n_iterations,
+            partition_type = partition_type, neighbors_key = neighbors_key,
+            copy = False, flavor = flavor, **clustering_args
+        )

@@ -3,7 +3,7 @@ import os
 import pandas
 from exprmat import basepath
 from exprmat.ansi import warning, info
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
 
 genome = {}
 

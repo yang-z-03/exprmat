@@ -3,6 +3,7 @@ import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from exprmat.plotting.palettes import mpl
 
 
 def linregress(
@@ -286,7 +287,7 @@ def density(
         y = yscale(y),
         s = size,
         c = clist,
-        cmap = cmap,
+        cmap = mpl(cmap),
         alpha = alpha
     )
 

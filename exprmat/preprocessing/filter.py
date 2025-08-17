@@ -5,6 +5,7 @@ import scipy.sparse as sparse
 import pandas as pd
 import numba
 from numba import njit
+import warnings
 
 from exprmat.ansi import warning, info, error
 import exprmat.snapatac as internal
@@ -96,9 +97,13 @@ def vscore(E, min_mean = 0, n_bins = 50, fit_percentile = 0.1, error_weight = 1)
     a = c / (1 + b) - 1
 
     v_scores = ff_gene / ((1 + a) * (1 + b) + b * mu_gene)
-    cv_eff = np.sqrt((1 + a) * (1 + b) - 1)
-    cv_input = np.sqrt(b)
 
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        # encounter invalid values (inf/nan)
+        cv_eff = np.sqrt((1 + a) * (1 + b) + 1e-300 - 1) # add a small sigma
+
+    cv_input = np.sqrt(b)
     return v_scores, cv_eff, cv_input, min_expr_filter, mu_gene, ff_gene, a, b
 
 

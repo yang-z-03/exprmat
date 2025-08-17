@@ -230,7 +230,7 @@ def gene_track(
     show_gene_name = True
 ):
     from exprmat.data.finders import get_genome, get_genome_model
-    from exprmat.configuration import default as cfg
+    from exprmat import config as cfg
     model = get_genome_model(assembly)
     gtable = get_genome(cfg['taxa.reference'][assembly.lower()])
 
@@ -575,7 +575,7 @@ def genes(
         return fig
     
     elif where is not None:
-        from exprmat.configuration import default as cfg
+        from exprmat import config as cfg
         gtable = get_genome(cfg['taxa.reference'][assembly.lower()])
         ens = gtable['id'].tolist()
         name = gtable['gene'].tolist()
@@ -606,7 +606,7 @@ def genes(
 
 def whereis(assembly, where, upstream = 10000, downstream = 10000):
 
-    from exprmat.configuration import default as cfg
+    from exprmat import config as cfg
     from exprmat.data.finders import get_genome, get_genome_model
     from exprmat.ansi import error
 

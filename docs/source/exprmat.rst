@@ -60,11 +60,6 @@ exprmat 主模块
     Get the working directory. An alias of :py:func:`os.getcwd`.
 
 
-.. py:function:: locate_data(path: str = '.')
-
-    Set the database folder directly.
-
-
 开始使用 exprmat 程序包
 -----------------------------------------
 

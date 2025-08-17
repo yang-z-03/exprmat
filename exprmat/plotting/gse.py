@@ -15,6 +15,7 @@ from matplotlib.colors import Normalize
 from matplotlib.category import UnitData
 from matplotlib.lines import Line2D
 
+from exprmat.plotting.palettes import mpl
 from exprmat.ansi import error, info
 
 
@@ -218,7 +219,7 @@ class nesplot:
             mat[np.newaxis, :],
             rasterized = True,
             norm = midnorm,
-            cmap = self.cmap,
+            cmap = mpl(self.cmap),
         )
 
         ax3.spines["bottom"].set_visible(False)
@@ -425,7 +426,7 @@ class heatmapplot(object):
         
         matrix = ax.pcolormesh(
             df.values,
-            cmap = self.cmap,
+            cmap = mpl(self.cmap),
             norm = norm,
             rasterized=True,
         )
@@ -751,7 +752,7 @@ class dotplot(object):
         sc = ax.scatter(
             x = x, y = y, data = df,
             s = "area", edgecolors = "none",
-            c = self.colname, cmap = self.cmap,
+            c = self.colname, cmap = mpl(self.cmap),
             vmin = vmin,
             vmax = vmax,
             marker = self.marker,

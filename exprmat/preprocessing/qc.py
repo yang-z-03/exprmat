@@ -59,7 +59,7 @@ def rna_qc(
     sample: str = '?',
 
     # mitochondrial quality filter
-    mt_seqid = 'MT',
+    mt_seqid = 'chrM',
     mt_percent = 0.15,
     ribo_genes = None,
     ribo_percent = None,

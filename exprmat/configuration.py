@@ -17,8 +17,9 @@ class Configuration:
             'Ubuntu', 
             'Verdana'
         ]
-        
-        self.config['backend'] = 'TkAgg'
+
+        self.config['plotting.flavor'] = 'light'
+        self.config['plotting.backend'] = 'TkAgg'
         self.config['data'] = os.path.join(os.path.dirname(__file__), 'data')
 
         # target taxa
@@ -56,6 +57,3 @@ class Configuration:
 
     def update_config(self, conf_name, value):
         self.config[conf_name] = value
-
-
-default = Configuration()

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from exprmat.ansi import error
-from exprmat.plotting.palettes import linear_palette, all_palettes
+from exprmat.plotting.palettes import linear_palette, all_palettes, get_palette
 
 
 def check_data_matches_labels(labels, data, side):
@@ -69,9 +69,7 @@ def sankey(
     # if no colorDict given, make one
     if colors is None:
         colors = {}
-        pal = linear_palette(all_palettes[cmap][
-            list(all_palettes[cmap].keys())[-1]
-        ], len(all_labels))
+        pal = get_palette(cmap, len(all_labels))
         for i, label in enumerate(all_labels):
             colors[label] = pal[i]
     

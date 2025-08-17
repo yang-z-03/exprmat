@@ -5,6 +5,7 @@ import numpy as np
 import scanpy as sc
 from matplotlib.colors import Colormap, TwoSlopeNorm
 from exprmat.ansi import error
+from exprmat.plotting.palettes import mpl
 
 
 def chromosome_heatmap(
@@ -66,7 +67,7 @@ def chromosome_heatmap(
         var_names = tmp_adata.var.index.values,
         groupby = groupby,
         figsize = figsize,
-        cmap = cmap,
+        cmap = mpl(cmap),
         show_gene_labels = False,
         var_group_positions = var_group_positions,
         var_group_labels = list(chr_pos_dict.keys()),
@@ -139,7 +140,7 @@ def chromosome_heatmap_summary(
         var_names = tmp_adata.var.index.values,
         groupby = groupby,
         figsize = figsize,
-        cmap = cmap,
+        cmap = mpl(cmap),
         show_gene_labels = False,
         var_group_positions = var_group_positions,
         var_group_labels = list(chr_pos_dict.keys()),

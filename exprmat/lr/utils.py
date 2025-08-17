@@ -10,7 +10,6 @@ from exprmat.ansi import warning, error, pprog
 
 
 class default_params():
-    
     logbase = exp(1)
     min_cells = 5
     expr_prop = 0.1

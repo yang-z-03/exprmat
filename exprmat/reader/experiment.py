@@ -30,7 +30,7 @@ from exprmat.reader.matcher import (
 )
 from exprmat.reader.matcher import attach_tcr
 from exprmat.ansi import warning, info, error, red, green
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
 import exprmat.reader.static as st
 import exprmat as em
 
@@ -237,7 +237,7 @@ class experiment:
                 if not 'atac' in self.modalities.keys(): self.modalities['atac'] = {}
                 default_assembly = i_assembly
 
-                from exprmat.reader.peaks import import_fragments
+                from exprmat.peaks.common import import_fragments
                 frags = import_fragments(
                     i_loc,
                     assembly = default_assembly,
@@ -426,7 +426,7 @@ class experiment:
                     os.unlink(temp_name)
                     os.system('cat ' + ' '.join([f'"{x}"' for x in fragments]) + ' > ' + temp_name + '.tsv.gz')
                     
-                    from exprmat.reader.peaks import import_fragments
+                    from exprmat.peaks.common import import_fragments
                     adata = import_fragments(
                         temp_name + '.tsv.gz',
                         assembly = i_assembly,
@@ -834,9 +834,11 @@ class experiment:
         else: self.mudata = None
 
 
-    def do_for(self, modality, samples, func, **kwargs):
+    def do_for(self, modality, samples, func, parallel = None, **kwargs):
         
         results = {}
+
+        queue = {}
         for mod, samp in zip(
             self.metadata.dataframe['modality'].tolist(),
             self.metadata.dataframe['sample'].tolist()
@@ -849,7 +851,7 @@ class experiment:
             if isinstance(samples, list):
                 if samp in samples: do = True
 
-            if do:
+            if do: 
                 
                 results[samp] = None
 
@@ -863,10 +865,48 @@ class experiment:
                 if not samp in self.modalities[mod].keys():
                     warning(f'{samp} not loaded in the {mod} modality.')
                     continue
-                
-                # try: results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
-                # except: warning(f'method failed for sample {samp}')
-                results[samp] = func(self.modalities[mod][samp], samp, **kwargs)
+
+                queue[samp] = { 'mod': mod, 'samp': samp, 'data': self.modalities[mod][samp] }
+        
+        # perform the operation for queues
+
+        if parallel:
+
+            # perform operation in parallel for the list of anndata.
+            # the internal code is implemented in snapatac's package.
+            # the parallel arguments is None or an integer representing the number
+            # of jobs to take parallelly.
+
+            from multiprocessing import Process
+            from multiprocessing import Pool
+            from functools import partial
+            from exprmat import pprog
+
+            partial_task = partial(st.parallel_return_self, func = func, kwargs = kwargs)
+            keys = [key for key in queue.keys()]
+            args = [[queue[k]['data'], k] for k in keys]
+            del keys # no use! unordered parallel,
+            # k is passed and returned for reconstruction of order
+
+            # must be ordered
+            p = Pool(processes = parallel)
+            output = list(pprog(
+                p.imap_unordered(partial_task, args),
+                total = len(args), desc = 'processing anndata'
+            ))
+            
+            results = {}
+            for data, key, out in output:
+                self.modalities[
+                    queue[key]['mod']
+                ][queue[key]['samp']] = data
+                results[key] = out
+
+            return results
+
+        else:
+            for key in queue.keys():
+                results[key] = func(queue[key]['data'], key, **kwargs)
         
         return results
 
@@ -1342,6 +1382,8 @@ class experiment:
         self.mudata[slot].obs[into] = self.mudata[slot].obs[into].astype('category')
         print(self.mudata[slot].obs[into].value_counts())
 
+    def run_rna_test(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.test, **kwargs)
     
     # wrapper functions
 
@@ -1377,6 +1419,9 @@ class experiment:
 
     def run_rna_scale_pca(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_scale_pca, **kwargs)
+
+    def run_rna_scvi(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_scvi, savepath = self.directory, **kwargs)
 
     def run_rna_knn(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_knn, **kwargs)

@@ -65,8 +65,10 @@ except ImportError:
     info('compilation finished.')
 
 
-from exprmat.configuration import default as config
+from exprmat.configuration import Configuration as configuration
 from exprmat.ansi import warning, info
+
+config = configuration()
 
 mu.set_options(pull_on_update = False)
 Image.MAX_IMAGE_PIXELS = config['max.image']
@@ -107,9 +109,10 @@ basepath = config['data']
 
 # core method exports
 from exprmat.utils import setup_styles
+from exprmat.ansi import error, warning, info, pprog, pproga
 from exprmat.reader.experiment import experiment, load_experiment
 from exprmat.reader.metadata import metadata, load_metadata
-from exprmat.ansi import error, warning, info, pprog, pproga
+
 
 setup_styles()
 
@@ -139,8 +142,8 @@ if PERFORM_DATABASE_CHECK:
 
 
 def cuda():
-
     import torch
+    from exprmat.utils import supports_tensorcore
     info(f'PyTorch version: {torch.__version__}')
     info(f'GPU acceleration availability: {"YES" if torch.cuda.is_available() else "NO"}')
     if torch.cuda.is_available():
@@ -154,7 +157,7 @@ def cuda():
             info(f'[{i}] {torch.cuda.get_device_name(i)} {"*" if torch.cuda.current_device() == i else ""}')
             info(f'    CUDA capability: {torch.cuda.get_device_capability(i)}')
             info(f'    Installed VRAM (GiB): {total_mem:.2f} GiB')
-            info(f'    Supporting TensorCore: {"YES" if torch.cuda.get_device_properties(0).major >= 7 else "NO"}')
+            info(f'    Supporting TensorCore: {"YES" if supports_tensorcore() else "NO"}')
             info(f'    Current dedicated memory: {dedicated_mem:.2f} / {total_mem:.2f} GiB ({100 * dedicated_mem / total_mem:.1f}%)')
 
 
@@ -186,7 +189,6 @@ def memory():
 
 setwd = os.chdir
 getwd = os.getcwd
-def locate_data(dir): config.update_config('data', dir)
 
 
 __all__ = [

@@ -18,3 +18,16 @@ div.admonition > p {
 .dark {
     scrollbar-color: #444 #111 !important;
 }
+
+html.dark img.image-light {
+    display: none
+}
+
+html:not(.dark) img.image-dark {
+    display: none
+}
+
+#content img {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}

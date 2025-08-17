@@ -9,7 +9,8 @@ import os
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import attach_tcr
 from exprmat.ansi import warning, info, error, red, green, pprog
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
+from exprmat.plotting.palettes import mpl
 
 
 def search_genes(genes):
@@ -147,6 +148,54 @@ def rna_scale_pca(
     pc = np.zeros((adata.n_vars, n_comps))
     pc[indices, :] = hvg_subset.varm[key_added]
     adata.varm[key_added] = pc
+
+
+def rna_scvi(
+    adata, sample_name, key_added = 'scvi', batch = None, n_comps = 30, 
+    hvg = 'vst.hvg', key_counts = 'counts', savepath = '', **kwargs
+):
+
+    if hvg not in adata.var.keys():
+        warning('you should select highly variable genes before scvi reduction.')
+        warning('if you really want to run an all genes, you should manually confirm your choice by')
+        warning(f'adding a var slot `hvg` (by default `{hvg}`) with all true values manually.')
+        error('now, we stop your routine unless you know what you are doing.')
+    
+    from exprmat.utils import choose_layer
+    import anndata as ad
+    counts = choose_layer(adata, layer = key_counts)[:, adata.var[hvg].tolist()].copy()
+    hvg_subset = ad.AnnData(X = counts)
+    hvg_subset.var = adata.var.loc[adata.var[hvg], :].copy()
+    hvg_subset.obs_names = adata.obs_names
+
+    # select the batch metadata
+    if batch: hvg_subset.obs['batch'] = adata.obs[batch].tolist()
+    else: hvg_subset.obs['batch'] = '.'
+    
+    # build scvi model
+    from exprmat.reduction.scvi import scvi
+    model, latent = scvi(
+        hvg_subset, batch_key = 'batch', layer_key = 'X', n_latent = n_comps,
+        **kwargs
+    )
+
+    # save the model
+    import os
+    if sample_name == 'integrated':
+        attempt = os.path.join(savepath, 'scvi')
+    else: attempt = os.path.join(savepath, 'rna', 'scvi', sample_name)
+    
+    os.makedirs(attempt, exist_ok = True)
+    model.save(attempt, overwrite = True)
+    adata.obsm[key_added] = latent
+
+    adata.uns[key_added] = {
+        'model': savepath,
+        'n_latent': n_comps,
+        'type': 'scvi'
+    }
+    
+    pass
 
 
 def rna_knn(adata, sample_name, **kwargs):
@@ -752,7 +801,7 @@ def atac_filter_cells(
     adata, sample_name, min_counts = 5000, max_counts = 100000, 
     min_tsse = 10, max_tsse = 100
 ):
-    from exprmat.reader.peaks import filter_cells
+    from exprmat.peaks.common import filter_cells
     filter_cells(
         adata, min_counts = min_counts, max_counts = max_counts, 
         min_tsse = min_tsse, max_tsse = max_tsse
@@ -760,7 +809,7 @@ def atac_filter_cells(
 
 
 def atac_make_bins(adata, sample_name, **kwargs):
-    from exprmat.reader.peaks import add_tile_matrix
+    from exprmat.peaks.common import add_tile_matrix
     add_tile_matrix(adata, **kwargs)
 
     # rename the chromosomal location
@@ -847,7 +896,7 @@ def atac_infer_gene_activity(adata, sample_name, make_gene_args = {}, exact = Tr
         return gdata
     
     else:
-        from exprmat.reader.peaks import make_gene_matrix
+        from exprmat.peaks.common import make_gene_matrix
         taxa = cfg['taxa.reference'][adata.uns['assembly']]
         # this method requires the location as variable names
         adata.var_names = adata.var['location'].tolist()
@@ -1077,7 +1126,7 @@ def atac_make_peak_matrix(adata, sample_name, key_peaks = 'peaks.merged', exact 
     
     else:
         
-        from exprmat.reader.peaks import make_peak_matrix
+        from exprmat.peaks.common import make_peak_matrix
         peaks = adata.uns[key_peaks]
         peaks = peaks['chr'] + ':' + peaks['start'].astype('str') + '-' + peaks['end'].astype('str')
         pdata = make_peak_matrix(adata, use_rep = peaks.tolist(), **kwargs)
@@ -1331,7 +1380,7 @@ def rna_plot_proportion(
         else: return 'turbo'
 
     if plot == 'bar':
-        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False, cmap = cmap)
+        fig = tmp.plot.bar(stacked = stacked, figsize = figsize, grid = False, cmap = mpl(cmap))
         fig.legend(loc = None, bbox_to_anchor = (1, 1), frameon = False)
         fig.set_ylabel(f'Proportion ({minor})')
         fig.set_xlabel(major)
@@ -1511,7 +1560,7 @@ def rna_plot_heatmap(
 
     pl = heatmap(
         adata = subset_adata, var_names = var_names, groupby = groupby, swap_axes = False,
-        cmap = cmap, show = False, figsize = figsize, standard_scale = standard_scale,
+        cmap = mpl(cmap), show = False, figsize = figsize, standard_scale = standard_scale,
         gene_symbols = var_identifier, var_group_labels = var_group_labels,
         var_group_rotation = 90, show_gene_labels = show_gene_labels
         # categories_order = categories_order
@@ -2066,3 +2115,22 @@ def adata_filter_column_by_sum(
     sums = mat.sum(0).reshape(-1)
     mask = (sums > min_sum) & (sums < max_sum)
     return adata[:, mask].copy()
+
+
+def parallel_return_self(mapx, func, kwargs):
+    import exprmat.ansi as ansi
+    ansi.SILENT = True
+
+    import contextlib
+    with contextlib.redirect_stdout(None):
+        out = func(mapx[0], mapx[1], **kwargs)
+
+    # data, key, out
+    return mapx[0], mapx[1], out
+
+
+def test(data, name, a = 0):
+    import time
+    print(name, 'begin')
+    time.sleep(5)
+    print(name, 'end')

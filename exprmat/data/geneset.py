@@ -4,7 +4,7 @@ import pandas
 import numpy as np
 
 from exprmat.ansi import warning, info
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
 from exprmat.data.finders import basepath, genome, get_genome
 
 

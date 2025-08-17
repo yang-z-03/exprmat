@@ -3,6 +3,7 @@ Normalization in linear space
 '''
 
 import scipy
+import scipy.sparse as sp
 import numpy as np
 import scanpy as sc
 
@@ -67,9 +68,23 @@ def normalize_total(
     if target_total is None:
         target_total = np.mean(tots_use)
 
-    b = np.array(float(target_total) / tots_use)
-    e_norm = E.multiply(b)
-    return e_norm.tocsc()
+    b = np.array(float(target_total) / tots_use.T)[0]
+    if not sp.issparse(E):
+        # this will densify the matrix, causing incredibly large memory comsumption
+        # when treating with an sparse matrix.
+        E = sp.csr_matrix(E)
+        
+    if sp.isspmatrix_csr(E):
+        e_norm = E.copy()
+        e_norm.data *= b.repeat(np.diff(E.indptr))
+    elif sp.isspmatrix_coo(E):
+        e_norm = E.copy()
+        e_norm.data *= b[E.row]
+    elif sp.isspmatrix_csc(E):
+        e_norm = E.copy()
+        e_norm.data *= b[E.indices]
+
+    return e_norm
 
 
 def normalize_size_factor(x, size_factor = None):

@@ -6,6 +6,8 @@ from functools import partial
 from tqdm import tqdm
 from tqdm.auto import tqdm as tqdma
 
+SILENT = False
+
 
 def fore_black() -> None:
     print('\033[30m', end = '')
@@ -111,6 +113,7 @@ def format_file_size(size):
 
 
 def error(text: str, error = None) -> None:
+    if SILENT: raise Exception(text) from error
     fore_red()
     print('[error]', end = ' ')
     ansi_reset()
@@ -121,6 +124,7 @@ def error(text: str, error = None) -> None:
 
 
 def warning(text: str) -> None:
+    if SILENT: return
     fore_yellow()
     print('[!]', end = ' ')
     ansi_reset()
@@ -129,6 +133,7 @@ def warning(text: str) -> None:
 
 
 def info(text: str) -> None:
+    if SILENT: return
     fore_cyan()
     print('[i]', end = ' ')
     ansi_reset()

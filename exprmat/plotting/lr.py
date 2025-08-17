@@ -11,6 +11,7 @@ from exprmat.lr.utils import default_anndata_keys as K
 from exprmat.lr.utils import default_primary_columns as D
 from exprmat.lr.utils import default_params as V
 from exprmat.utils import error, warning, info
+from exprmat.plotting.palettes import mpl
 
 
 def check_variable(liana_res, var_name, var):
@@ -434,7 +435,7 @@ def lr_dotplot(
 
     p = ax.scatter(
         x = 'x', y = 'y', s = 's',
-        edgecolors = "lightgrey", c = 'c', cmap = cmap,
+        edgecolors = "lightgrey", c = 'c', cmap = mpl(cmap),
         data = pd.DataFrame(df), marker = 'o'
     )
 
@@ -517,7 +518,7 @@ def heatmap(
     sns.heatmap(
         pvt, ax = ax, annot = annotate, linewidths = .5, 
         fmt = 'd' if pivot_mode == 'counts' else '.1f',
-        cmap = cmap
+        cmap = mpl(cmap)
     )
 
     ax.set_xlabel('Receiver (receptors)')

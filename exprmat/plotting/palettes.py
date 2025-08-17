@@ -1439,7 +1439,7 @@ d3 = {
     'category20c' : Category20c,
 }
 
-mpl = {
+matpl = {
     'magma'   : Magma,
     'inferno' : Inferno,
     'plasma'  : Plasma,
@@ -1655,7 +1655,7 @@ def cividis(n: int) -> palette:
 def turbo(n: int) -> palette:
     return linear_palette(Turbo256, n)
 
-def cmdiv_wyj(n: int) -> palette:
+def wyj(n: int) -> palette:
     return interp_palette(palette((
         rgb_color(78, 42, 135).to_hex(),
         rgb_color(162, 184, 198).to_hex(),
@@ -1722,12 +1722,13 @@ def demo_colormap(ncols = 6, dpi = 100):
     for i, feat in enumerate(list(all_palettes.keys())):
         if len(axes.shape) == 2:
             plot_colormap(
-                get_palette(feat, 256), 
+                get_palette(feat), 
                 axes[i // ncols, i % ncols], 
                 title = feat
             )
+
         elif len(axes.shape) == 1:
-            plot_colormap(get_palette(feat, 256), axes[i], title = feat)
+            plot_colormap(get_palette(feat), axes[i], title = feat)
     
     for icol in range(ncols):
         for irow in range(nrows):
@@ -1752,10 +1753,16 @@ def to_rgba_array(palette: palette):
     return rgba_array
 
 
-def get_palette_tuple(name, n):
+def get_palette_tuple(name, n = None):
     
     if name not in all_palettes.keys():
         error(f'can not find a palette named `{name}`.')
+    
+    # find if there is a defined n set if n is None.
+    if (n is None) and isinstance(all_palettes[name], dict):
+        keys = list(all_palettes[name].keys())
+        return all_palettes[name][keys[-1]]
+    elif n is None: n = 256
     
     if isinstance(all_palettes[name], dict):
         if n in all_palettes[name].keys():
@@ -1764,10 +1771,74 @@ def get_palette_tuple(name, n):
     else: return interp_palette(all_palettes[name], n)
 
 
-def get_palette(name, n):
-    return list(get_palette_tuple(name, n))
+def get_palette(name, n = None):
 
-# custom palettes
-all_palettes['cmdiv_wyj']  = cmdiv_wyj(256)
+    if '/' in name: name, suffix = name.split('/')
+    else: suffix = None
+    
+    pal = list(get_palette_tuple(name, n))
+    if suffix: # modification suffices.
+        if suffix == 'r': pal = pal[::-1]
+    
+    return pal
+
+
+def mpl(name, n = 256):
+    return to_matplotlib(get_palette(name, n))
+
+
 all_palettes['modlight']   = modlight(256)
 all_palettes['moddark']    = moddark(256)
+
+# inherit from matplotlib
+import matplotlib
+
+def get_mpl_discrete_colormap(name):
+    l, names = len(matplotlib.colormaps[name].colors), matplotlib.colormaps[name].colors
+    colors = []
+    for i in range(l):
+        r, g, b = names[i][0:3]
+        colors.append(rgb_color(int(r * 255), int(g * 255), int(b * 255)).to_hex())
+    return l, colors
+
+def get_mpl_continuous_colormap(name):
+    names = matplotlib.colormaps[name](np.linspace(0, 1, 256))
+    colors = []
+    for i in range(256):
+        r, g, b = names[i, 0:3]
+        colors.append(rgb_color(int(r * 255), int(g * 255), int(b * 255)).to_hex())
+    return 256, colors
+
+discretes = [
+    'tab10', 'tab20', 'tab20b', 'tab20c'
+]
+
+continuous = [
+    # cyclic
+    'twilight', 'twilight_shifted', 'hsv',
+
+    # diverging
+    'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu', 'RdYlBu', 'RdYlGn',
+    'Spectral', 'coolwarm', 'bwr', 'seismic', 'berlin', 'managua', 'vanimo',
+
+    # sequential
+    'bone', 'pink', 'spring', 'summer', 'autumn', 'winter', 'cool', 'Wistia',
+    'hot', 'afmhot', 'gist_heat', 'copper',
+
+    # misc
+    'flag', 'prism', 'ocean', 'gist_earth', 'terrain', 'gist_stern',
+    'gnuplot', 'gnuplot2', 'CMRmap', 'cubehelix', 'brg', 'gist_rainbow',
+    'rainbow', 'jet', 'gist_ncar', 'nipy_spectral'
+]
+
+for d in discretes:
+    k, v = get_mpl_discrete_colormap(d)
+    all_palettes[d.lower().replace('_', '.')] = { k : v }
+
+for d in continuous:
+    k, v = get_mpl_continuous_colormap(d)
+    all_palettes[d.lower().replace('_', '.')] = v
+
+
+# custom palettes
+all_palettes['wyj']  = wyj(256)

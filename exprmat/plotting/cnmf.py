@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
+from exprmat.plotting.palettes import mpl, get_palette
+
 
 def cnmf_silhoutte(adata, nmf_slot = 'cnmf', figsize = (3, 2), dpi = 100):
 
@@ -38,11 +40,11 @@ def cnmf_density(adata, k, nmf_slot = 'cnmf', figsize = (3, 2), dpi = 100):
     return fig
 
 
-def cnmf_distance_comps(adata, k, nmf_slot = 'cnmf', cmap = 'Reds_r', figsize = (3, 3), dpi = 100):
+def cnmf_distance_comps(adata, k, nmf_slot = 'cnmf', cmap = 'reds', figsize = (3, 3), dpi = 100):
     
     fig = plt.figure(figsize = figsize, dpi = dpi)
     df = adata.uns[f'{nmf_slot}.dist.{k}']
-    fig.gca().imshow(df, cmap = cmap)
+    fig.gca().imshow(df, cmap = mpl(cmap))
 
     return fig
 
@@ -50,7 +52,7 @@ def cnmf_distance_comps(adata, k, nmf_slot = 'cnmf', cmap = 'Reds_r', figsize = 
 def cnmf_distance_usages(
     adata, k, nmf_slot = 'cnmf', metrics = 'cosine', downsample = 0.1, method = 'single',
     annotations = None, show_indices = False, legend_cols = 1,
-    cmap = 'Reds_r', cmap_annotations = 'Set1', figsize = (3, 3), dpi = 100
+    cmap = 'reds', cmap_annotations = 'set1', figsize = (3, 3), dpi = 100
 ):
     
     import numpy as np
@@ -80,8 +82,8 @@ def cnmf_distance_usages(
 
 def cnmf_distance_modules(
     adata, k, nmf_slot = 'cnmf', metrics = 'cosine', downsample = 1, method = 'complete',
-    annotations = None, cmap_annotations = 'Set1', show_indices = False,
-    cmap = 'Reds_r', figsize = (3, 3), dpi = 100, legend_cols = 1
+    annotations = None, cmap_annotations = 'set1', show_indices = False,
+    cmap = 'reds', figsize = (3, 3), dpi = 100, legend_cols = 1
 ):
     
     import numpy as np
@@ -109,12 +111,12 @@ def cnmf_distance_modules(
 
 def matrix_plot(
     mat, labels = None, annotations = None, 
-    cmap = 'Reds_r', cmap_annotations = 'Set1',
+    cmap = 'reds', cmap_annotations = 'set1',
     show_indices = True,
     figsize = (3, 3), dpi = 100, legend_cols = 1
 ):
     fig = plt.figure(figsize = figsize, dpi = dpi)
-    fig.gca().imshow(mat, cmap = cmap)
+    fig.gca().imshow(mat, cmap = mpl(cmap))
     ax = fig.gca()
     ax.set_yticks([])
     ax.set_xticks([])
@@ -130,9 +132,7 @@ def matrix_plot(
         annot_n = [annot_u.index(x) for x in annotations]
 
         from exprmat.plotting import palettes
-        colors = list(palettes.linear_palette(palettes.all_palettes[cmap_annotations][
-            list(palettes.all_palettes[cmap_annotations].keys())[-1]
-        ], len(annot_u)))
+        colors = get_palette(cmap_annotations, len(annot_u))
         colormap = {x: y for x, y in zip(annot_u, colors)}
 
         ax_annot.set_xlim(-0.5, 0.5)
@@ -175,7 +175,7 @@ def matrix_plot(
         ncol = annotations.shape[1]
         ax_annot = ax.inset_axes([1.05, 0, max(0.3, 0.07 * ncol), 1], sharey = ax)
         
-        ax_annot.imshow(annotations, cmap = cmap_annotations, aspect = 'auto', interpolation = 'nearest')
+        ax_annot.imshow(annotations, cmap = mpl(cmap_annotations), aspect = 'auto', interpolation = 'nearest')
         # ax_annot.set_yticks([])
         if xn: 
             ax_annot.set_xticks([x for x in range(len(xn))])

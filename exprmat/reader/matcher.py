@@ -17,7 +17,7 @@ from exprmat.ansi import error, warning, info
 from exprmat.data.finders import get_mapper_ensembl, get_mapper_name, get_genome
 from exprmat.data.finders import update_mapper_ensembl, update_mapper, save_genome_changes
 from exprmat.reader.metadata import metadata
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
 from exprmat.ansi import info
 
 

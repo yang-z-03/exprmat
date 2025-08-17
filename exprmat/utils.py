@@ -9,13 +9,18 @@ import pandas as pd
 
 import numba
 from exprmat.ansi import error, warning, info, pprog
-from exprmat.configuration import default as cfg
+from exprmat import config as cfg
 
 
 def setup_styles(
-    font_name = cfg['plotting.font'], 
-    backend = cfg['backend']
+    font_name = None, 
+    backend = None,
+    flavor = None
 ):
+    
+    if not font_name: font_name = cfg['plotting.font']
+    if not backend: backend = cfg['plotting.backend']
+    if not flavor: flavor = cfg['plotting.flavor']
 
     import matplotlib as mpl
     import matplotlib.pyplot as plt
@@ -33,7 +38,46 @@ def setup_styles(
 
     # do not show too much precision
     np.set_printoptions(precision = 3, floatmode = 'fixed', suppress = True)
+
+    # set global flavor (one of 'light' and 'dark')
+    setup_flavor(flavor)
     pass
+
+
+def setup_flavor(flavor):
+
+    import matplotlib as mpl
+
+    foreground = '#000000'
+    background = '#ffffff'
+    secondary_background = '#f2f5f9'
+    border = '#000000'
+
+    if flavor == 'dark':
+        foreground = '#e3e7ef'
+        border = "#9e9e9e"
+        background = '#040711'
+        secondary_background = '#111729'
+
+    elif flavor == 'light':
+        foreground = '#000000'
+        border = '#000000'
+        background = '#ffffff'
+        secondary_background = '#f2f5f9'
+        pass
+
+    mpl.rcParams['text.color'] = foreground
+    mpl.rcParams['axes.facecolor'] = background
+    mpl.rcParams['axes.labelcolor'] = foreground
+    mpl.rcParams['axes.edgecolor'] = border
+    mpl.rcParams['xtick.color'] = foreground
+    mpl.rcParams['xtick.labelcolor'] = foreground
+    mpl.rcParams['ytick.color'] = foreground
+    mpl.rcParams['ytick.labelcolor'] = foreground
+    mpl.rcParams['legend.facecolor'] = secondary_background
+    mpl.rcParams['legend.edgecolor'] = secondary_background
+    mpl.rcParams['legend.labelcolor'] = foreground
+    mpl.rcParams['figure.facecolor'] = background
 
 
 def ensure_array(a):
@@ -738,3 +782,30 @@ def reduce(f, list, **kwargs):
         f0 = f(f0, list[i], **kwargs)
     
     return f0
+
+
+def configure_vram_flavor(flavor = 'ram'):
+    
+    import rmm
+    import cupy as cp
+    from rmm.allocators.cupy import rmm_cupy_allocator
+
+    if flavor == 'ram':
+        rmm.reinitialize(
+            managed_memory = True,
+            pool_allocator = False,
+        )
+    
+    elif flavor == 'vram':
+        rmm.reinitialize(
+            managed_memory = False,
+            pool_allocator = True
+        )
+
+    cp.cuda.set_allocator(rmm_cupy_allocator)
+
+
+def supports_tensorcore():
+    import torch
+    if not torch.cuda.is_available(): return False
+    else: return torch.cuda.get_device_properties(0).major >= 7

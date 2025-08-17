@@ -21,7 +21,7 @@ from pynndescent import NNDescent
 
 from exprmat.ansi import error, warning, info, pprog
 from exprmat.data.finders import basepath
-from exprmat.configuration import default
+from exprmat import config as default
 
 
 # genomic background sequencing
