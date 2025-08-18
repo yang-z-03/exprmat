@@ -57,29 +57,27 @@ def scvi(
     )
 
     import warnings
-    import contextlib
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        with contextlib.redirect_stderr(None):
-            model.train(
-                max_epochs = max_epochs, 
-                accelerator = accelerator, 
-                devices = devices, 
-                train_size = train_size, 
-                validation_size = validation_size, 
-                shuffle_set_split = shuffle_set_split, 
-                load_sparse_tensor = load_sparse_tensor, 
-                batch_size = batch_size, 
-                early_stopping = early_stopping, 
-                datasplitter_kwargs = datasplitter_kwargs, 
-                plan_kwargs = plan_kwargs, 
-                datamodule = datamodule,
-                enable_progress_bar = enable_progress_bar, 
-                progress_bar_refresh_rate = progress_bar_refresh_rate, 
-                simple_progress_bar = simple_progress_bar, 
-                logger = logger, 
-                log_every_n_steps = log_every_n_steps,
-            )
+        model.train(
+            max_epochs = max_epochs, 
+            accelerator = accelerator, 
+            devices = devices, 
+            train_size = train_size, 
+            validation_size = validation_size, 
+            shuffle_set_split = shuffle_set_split, 
+            load_sparse_tensor = load_sparse_tensor, 
+            batch_size = batch_size, 
+            early_stopping = early_stopping, 
+            datasplitter_kwargs = datasplitter_kwargs, 
+            plan_kwargs = plan_kwargs, 
+            datamodule = datamodule,
+            enable_progress_bar = enable_progress_bar, 
+            progress_bar_refresh_rate = progress_bar_refresh_rate, 
+            simple_progress_bar = simple_progress_bar, 
+            logger = logger, 
+            log_every_n_steps = log_every_n_steps,
+        )
 
     latent = model.get_latent_representation()
     return model, latent

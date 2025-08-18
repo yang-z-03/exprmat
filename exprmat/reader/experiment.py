@@ -44,10 +44,6 @@ class experiment:
         dump = '.', subset = None,
         version = em.SPECIFICATION
     ):
-        
-        from exprmat.reader.updater import update
-        version = update(meta, modalities, mudata, version)
-
         # TODO: we support rna only at present.
         table = meta.dataframe.to_dict(orient = 'list')
         self.mudata = mudata
@@ -263,6 +259,15 @@ class experiment:
                 pass
 
             else: warning(f'sample {i_sample} have no supported modalities')
+
+
+        self.metadata.dataframe = self.metadata.dataframe.loc[
+            self.metadata.dataframe['modality'] != 'rna.splicing', :
+        ].copy()
+        
+        self.metadata.dataframe = self.metadata.dataframe.loc[
+            self.metadata.dataframe['modality'] != 'rna.tcr', :
+        ].copy()
 
 
         # attaching bulk datasets.
@@ -894,6 +899,8 @@ class experiment:
                 p.imap_unordered(partial_task, args),
                 total = len(args), desc = 'processing anndata'
             ))
+
+            p.close()
             
             results = {}
             for data, key, out in output:
@@ -2439,6 +2446,17 @@ def load_experiment(direc, load_samples = True, load_subset = None):
     # read individual modality and sample
     meta = load_metadata(os.path.join(direc, 'metadata.tsv'))
 
+    # load specification
+    version = load_experiment_specification(direc)
+    
+    # update the object to the newest version
+    from exprmat.reader.updater import update
+    version = update(meta, direc, version)
+
+    meta.dataframe = meta.dataframe.loc[
+        ['.' in x for x in meta.dataframe['modality']], :
+    ].copy()
+
     modalities = {}
     if load_samples:
         for modal, samp in zip(meta.dataframe['modality'], meta.dataframe['sample']):
@@ -2459,9 +2477,6 @@ def load_experiment(direc, load_samples = True, load_subset = None):
         if os.path.exists(os.path.join(direc, 'subsets', load_subset + '.h5mu')):
             mdata = mu.read_h5mu(os.path.join(direc, 'subsets', load_subset + '.h5mu'))
 
-    # load specification
-    version = load_experiment_specification(direc)
-    
     expr = experiment(
         meta = meta, 
         mudata = mdata, 

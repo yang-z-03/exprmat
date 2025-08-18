@@ -182,16 +182,17 @@ def rna_scvi(
     # save the model
     import os
     if sample_name == 'integrated':
-        attempt = os.path.join(savepath, 'scvi')
-    else: attempt = os.path.join(savepath, 'rna', 'scvi', sample_name)
+        attempt = os.path.join(savepath, 'scvi', key_added)
+    else: attempt = os.path.join(savepath, 'rna', 'scvi', sample_name, key_added)
     
     os.makedirs(attempt, exist_ok = True)
     model.save(attempt, overwrite = True)
     adata.obsm[key_added] = latent
 
     adata.uns[key_added] = {
-        'model': savepath,
+        'model': attempt,
         'n_latent': n_comps,
+        'batch_key': batch,
         'type': 'scvi'
     }
     
