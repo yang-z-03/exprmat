@@ -151,11 +151,13 @@ dmypy.json
 cython_debug/
 
 notebooks
+!docs/source/notebooks
 
 exprmat/data/*/
 !exprmat/data/*.py
 
 .idea
+.cursor
 
 Cargo.lock
 publish.sh
