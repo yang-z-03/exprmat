@@ -1,6 +1,7 @@
 
 import re
 import os
+import sys
 
 from functools import partial
 from tqdm import tqdm
@@ -91,12 +92,12 @@ def common_length(string: str, limit: int) -> str:
         return x_str
     
     elif len(string) + cn_length > limit:
-        x_str = string[-(limit - 4):]
+        x_str = string[-(limit - 3):]
         cn = len(re.findall(cn_re, x_str))
-        while cn + len(x_str) > limit - 4:
+        while cn + len(x_str) > limit - 3:
             x_str = x_str[1:]
             cn = len(re.findall(cn_re, x_str))
-        return '... ' + x_str
+        return '.. ' + x_str
         
     else: return ('{:<' + str(limit - cn_length) + '}').format(string)
 
@@ -161,8 +162,16 @@ def cyan(x): return '\033[36m' + x + '\033[0m'
 progress_styles = {
     'ncols': 80,
     'ascii': '-━',
-    'bar_format': '   {bar} {desc:20} {n:5d} / {total:<5d} ({elapsed} < {remaining})'
+    'bar_format': '   {bar} {desc:20} {n:5d} / {total:<5d} ({elapsed} < {remaining})',
+    'file': sys.stderr
 }
 
-pprog = partial(tqdm, **progress_styles)
-pproga = partial(tqdma, **progress_styles)
+
+class pprog(tqdm):
+    def __init__(self, x, **kwargs):
+        super().__init__(x, **progress_styles, **kwargs)
+
+
+class pproga(tqdma):
+    def __init__(self, x, **kwargs):
+        super().__init__(x, **progress_styles, **kwargs)

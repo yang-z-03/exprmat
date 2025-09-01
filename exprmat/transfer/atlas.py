@@ -30,6 +30,84 @@ def construct_atlas(
     scanvi_max_epochs = 30,
     scanvi_samples_per_label = 200,
 ):
+    """
+    构建单细胞数据集的参考图谱（atlas）
+    
+    该函数使用 scVI 和 scANVI 模型构建单细胞转录组数据的参考图谱，
+    实现批次效应校正和细胞类型注释。函数会训练 scVI 模型进行批次校正，
+    然后使用 scANVI 模型进行半监督学习，将已知细胞类型信息整合到潜在表示中。
+    
+    Parameters
+    ----------
+    expm : experiment
+        实验对象，包含需要构建图谱的单细胞数据
+    key_counts : str, optional
+        计数矩阵在 layers 中的键名，默认为 'counts'。
+        如果为 None，则使用 .X 矩阵
+    key_batch : str, optional
+        批次信息在 obs 中的列名，默认为 'batch'。
+        如果不存在，所有细胞将被标记为 'whole'
+    batch_cell_filter : int, optional
+        批次中细胞数量的最小阈值，默认为 50。
+        低于此阈值的批次将被标记为 'outliers' 并从分析中移除
+    scvi_n_epoch : int, optional
+        scVI 模型训练的最大轮数，默认为 None（自动计算）。
+        自动计算基于细胞数量：min(round((20000/n_cells) * 400), 400)
+    scvi_n_latent : int, optional
+        scVI 模型潜在空间维度，默认为 10
+    scvi_n_hidden : int, optional
+        scVI 模型隐藏层神经元数量，默认为 128
+    scvi_n_layers : int, optional
+        scVI 模型隐藏层数量，默认为 1
+    scvi_dropout_rate : float, optional
+        scVI 模型 dropout 率，默认为 0.1
+    scvi_dispersion : str, optional
+        scVI 模型离散度参数，默认为 'gene'
+    scvi_gene_likelihood : str, optional
+        scVI 模型基因似然分布，默认为 'zinb'（零膨胀负二项分布）
+    scvi_latent_distrib : str, optional
+        scVI 模型潜在分布类型，默认为 'normal'
+    scvi_key : str, optional
+        scVI 潜在表示在 obsm 中的键名，默认为 'scvi'
+    annotation : str, optional
+        细胞类型注释在 obs 中的列名，默认为 'cell.type'
+    scanvi_key : str, optional
+        scANVI 潜在表示在 obsm 中的键名，默认为 'scanvi'
+    scanvi_unlabel : str, optional
+        未标记细胞的类别名称，默认为 'unknown'
+    scanvi_max_epochs : int, optional
+        scANVI 模型训练的最大轮数，默认为 30
+    scanvi_samples_per_label : int, optional
+        每个标签的采样数量，默认为 200
+        
+    Returns
+    -------
+    None
+        函数不返回值，但会：
+        1. 在 expm.mudata['rna'] 中添加 scVI 和 scANVI 的潜在表示
+        2. 在 expm.directory/scvi/ 目录下保存训练好的模型
+        3. 在 expm.mudata['rna'].uns 中添加图谱元数据
+        
+    Notes
+    -----
+    - 函数会自动创建 scvi 目录结构
+    - 如果目标路径已存在，函数会报错并退出
+    - 训练轮数会根据数据规模自动调整
+    - 小批次样本会被标记为 'outliers' 并从分析中移除
+    - 模型会保存到 expm.directory/scvi/{savename}/ 目录下
+    - 同时会生成一个轻量级的元数据文件 metadata.h5ad
+    
+    Examples
+    --------
+    >>> from exprmat.transfer.atlas import construct_atlas
+    >>> # 构建参考图谱
+    >>> construct_atlas(
+    ...     expm, 
+    ...     scvi_n_latent = 20, 
+    ...     scvi_n_hidden = 256,
+    ...     annotation = 'cell.type'
+    ... )
+    """
     
     import warnings
     warnings.filterwarnings('ignore')

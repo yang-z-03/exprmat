@@ -310,7 +310,7 @@ def read_mtx_rna(
 
 
 def read_h5_rna(
-    path: str, 
+    src: str, 
     metadata: metadata, sample: str, raw: bool = False,
     default_taxa = 'mmu', eccentric = None, suppress_filter = False,
 ):
@@ -318,7 +318,7 @@ def read_h5_rna(
     warnings.filterwarnings('ignore')
 
     adata = sc.read_10x_h5(
-        path, gex_only = True
+        src, gex_only = True
     )
 
     adata.var_names = adata.var['gene_ids'].tolist()
@@ -346,7 +346,7 @@ def read_h5_rna(
 def read_table_rna(
     src: str, 
     metadata: metadata, sample: str, raw: bool = False,
-    default_taxa = 'mmu', eccentric = None
+    default_taxa = 'mmu', eccentric = None, sep = '\t'
 ):
     '''
     Read from compressed or plain text tables.
@@ -374,7 +374,7 @@ def read_table_rna(
     
     # in csv/tsv texts, genes are rows and cells are columns.
     adata = sc.read_text(
-        src, delimiter = '\t', first_column_names = True, dtype = 'float32'
+        src, delimiter = sep, first_column_names = True, dtype = 'float32'
     ).T
 
     if eccentric is not None:

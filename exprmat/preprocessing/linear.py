@@ -68,7 +68,15 @@ def normalize_total(
     if target_total is None:
         target_total = np.mean(tots_use)
 
-    b = np.array(float(target_total) / tots_use.T)[0]
+    b = np.array(float(target_total) / tots_use.T)
+    e_norm = mul_row(E, b)
+
+    return e_norm
+
+
+def mul_row(E, b):
+
+    if len(b.shape) == 2: b = b[0]
     if not sp.issparse(E):
         # this will densify the matrix, causing incredibly large memory comsumption
         # when treating with an sparse matrix.
@@ -83,7 +91,7 @@ def normalize_total(
     elif sp.isspmatrix_csc(E):
         e_norm = E.copy()
         e_norm.data *= b[E.indices]
-
+    
     return e_norm
 
 

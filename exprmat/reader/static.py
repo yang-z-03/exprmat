@@ -233,6 +233,11 @@ def rna_umap(adata, sample_name, **kwargs):
     run_umap(adata, **kwargs)
 
 
+def rna_diffmap(adata, sample_name, **kwargs):
+    from exprmat.reduction.diffmap import run_diffmap
+    run_diffmap(adata, **kwargs)
+
+
 def rna_mde(adata, sample_name, data = 'pca', key_added = 'mde', **kwargs):
     from exprmat.reduction.mde import mde
     emb = mde(adata.obsm[data], **kwargs)
@@ -796,6 +801,129 @@ def rna_impute_magic(
     adata.layers[key_added] = imp.X
     if hasattr(imputer, 'errors'): adata.uns['magic.errors'] = getattr(imputer, 'errors')
     if hasattr(imputer, 't_opt'): adata.uns['magic.t'] = getattr(imputer, 't_opt')
+
+
+def rna_layout_graph(
+    adata, sample_name, layout = "fa", *,
+    init_pos: str | bool | None = None,
+    root: int | None = None,
+    random_state = 0,
+    adjacency = None,
+    key_added_ext: str | None = None,
+    neighbors_key: str | None = None,
+    use_gpu = False,
+    **kwargs,
+):
+    from exprmat.reduction.forceatlas import draw_graph
+    draw_graph(
+        adata, layout = layout,
+        init_pos = init_pos,
+        root = root, random_state = random_state, 
+        key_added_ext = key_added_ext, neighbors_key = neighbors_key,
+        adjacency = adjacency, use_gpu = use_gpu, **kwargs
+    )
+
+
+def rna_principle_tree_explore_sigma(
+    adata, sample_names,
+    nodes = 200,
+    use_rep = 'umap',
+    background_color = None,
+    ndims_rep = None,
+    sigmas = [1000, 100, 10, 1, 0.1, 0.01],
+    nsteps = 1,
+    metric = "euclidean",
+    seed = None,
+    key_added = 'ppt',
+    **kwargs,
+):
+    from exprmat.trajectory.elpi import explore_sigma
+    return explore_sigma(
+        adata,
+        Nodes = nodes,
+        use_rep = use_rep,
+        ndims_rep = ndims_rep,
+        sigmas = sigmas,
+        nsteps = nsteps,
+        metric = metric,
+        seed = seed,
+        plot = True,
+        key_added = key_added,
+        background_color = background_color,
+        **kwargs,
+    )
+
+def rna_principle_tree(
+    adata, sample_name, use_rep = 'umap',
+    ndims_rep = None,
+    weight_rep = None,
+    method = "ppt",
+    init = None,
+    ppt_sigma = 0.1,
+    ppt_lambda = 1,
+    ppt_metric = "euclidean",
+    ppt_nsteps = 50,
+    ppt_err_cut = 5e-3,
+    ppt_gpu_tpb = 16,
+    epg_lambda = 0.01,
+    epg_mu = 0.1,
+    epg_trimmingradius = np.inf,
+    epg_initnodes = 2,
+    epg_extend_leaves = False,
+    epg_verbose = False,
+    device = "cpu",
+    seed = 42,
+    key_added = 'ppt',
+    **kwargs,
+):
+    from exprmat.trajectory.elpi import tree
+    tree(
+        adata,
+        use_rep = use_rep,
+        ndims_rep = ndims_rep,
+        weight_rep = weight_rep,
+        method = method,
+        init = init,
+        ppt_sigma = ppt_sigma,
+        ppt_lambda = ppt_lambda,
+        ppt_metric = ppt_metric,
+        ppt_nsteps = ppt_nsteps,
+        ppt_err_cut = ppt_err_cut,
+        ppt_gpu_tpb = ppt_gpu_tpb,
+        epg_lambda = ppt_lambda,
+        epg_mu = epg_mu,
+        epg_trimmingradius = epg_trimmingradius,
+        epg_initnodes = epg_initnodes,
+        epg_extend_leaves = epg_extend_leaves,
+        epg_verbose = epg_verbose,
+        device = device,
+        seed = seed,
+        key_added = key_added,
+        **kwargs,
+    )
+
+
+def rna_principle_tree_root(
+    adata, sample_names,
+    root,
+    tips_only = False,
+    min_val = False,
+    trajectory_key = 'ppt'
+):
+    from exprmat.trajectory.root import define_root
+    define_root(adata, root, tips_only = tips_only, min_val = min_val, trajectory_key = trajectory_key)
+
+
+def rna_principle_tree_pseudotime(
+    adata, sample_names,
+    n_jobs: int = 1,
+    n_map: int = 1,
+    seed: int | None = 42,
+    trajectory_key: str = 'ppt',
+    **kwargs
+):
+    from exprmat.trajectory.pseudotime import pseudotime
+    pseudotime(adata, trajectory_key = trajectory_key, n_jobs = n_jobs, n_map = n_map, seed = seed, **kwargs)
 
 
 def atac_filter_cells(
@@ -1369,7 +1497,7 @@ def rna_plot_compare_scatter(
 
 def rna_plot_proportion(
     adata, sample_name, major, minor, plot = 'bar', cmap = 'turbo',
-    normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4
+    normalize = 'columns', figsize = (5,3), stacked = False, wedge = 0.4, legend = True
 ):
     if normalize == 'major': normalize = 'columns'
     if normalize == 'minor': normalize = 'index'
@@ -1387,6 +1515,7 @@ def rna_plot_proportion(
         fig.set_xlabel(major)
         fig.spines['right'].set_visible(False)
         fig.spines['top'].set_visible(False)
+        if not legend: fig.get_legend().remove()
         if normalize == 'index':
             fig.set_ylim(0, 1)
         fig.figure.tight_layout()
@@ -1510,6 +1639,7 @@ def rna_plot_dot(
 ):
     from scanpy.plotting import dotplot
     from scanpy.tools import dendrogram as dend
+    from exprmat.plotting.palettes import mpl
 
     if dendrogram:
         dend(
@@ -1527,7 +1657,7 @@ def rna_plot_dot(
         var_group_positions = var_group_positions, var_group_labels = var_group_labels, 
         var_group_rotation = var_group_rotation, layer = layer, swap_axes = swap_axes, 
         dot_color_df = dot_color_df, vmin = vmin, vmax = vmax, vcenter = vcenter, norm = norm, 
-        cmap = cmap, dot_max = dot_max, dot_min = dot_min, smallest_dot = smallest_dot, **kwds
+        cmap = mpl(cmap), dot_max = dot_max, dot_min = dot_min, smallest_dot = smallest_dot, **kwds
     )
 
     pl.show()
@@ -1843,6 +1973,16 @@ def rna_plot_cnmf_distance_usages(adata, sample_name, **kwargs):
 def rna_plot_cnmf_distance_modules(adata, sample_name, **kwargs):
     from exprmat.plotting.cnmf import cnmf_distance_modules
     return cnmf_distance_modules(adata, **kwargs)
+
+
+def rna_plot_graph(adata, sample_name, **kwargs):
+    from exprmat.plotting.trajectory import graph
+    return graph(adata, **kwargs)
+
+
+def rna_plot_principle_tree_segments(adata, sample_name, **kwargs):
+    from exprmat.plotting.trajectory import trajectory
+    return trajectory(adata, **kwargs)
 
 
 def atac_plot_qc(adata, sample_name, **kwargs):

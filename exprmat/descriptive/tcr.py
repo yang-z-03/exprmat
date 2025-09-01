@@ -101,8 +101,6 @@ def transition(adata, clonotype = 'clone.id', cluster = 'leiden', key = 'tcr.clo
         adata.obs.loc[adata.obs[clonotype] == cl, key] = shannon_e
 
 
-
-
 def migration(adata, clonotype = 'clone.id', cluster = 'tissue', key = 'tcr.clone.migr'):
     # completely the same.
     transition(adata, clonotype = clonotype, cluster = cluster, key = key)

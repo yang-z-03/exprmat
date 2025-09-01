@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = 'exprmat'
 copyright = '2025 (c) Zheng Yang'
 author = 'Zheng Yang'
-release = '0.1.31'
+release = '0.1.43'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -27,8 +27,8 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinx.ext.napoleon',
-    'sphinx_design'
-    # 'nbsphinx'
+    'sphinx_design',
+    'nbsphinx',
 ]
 
 templates_path = ['_templates']
@@ -70,3 +70,69 @@ html_theme = 'sphinxawesome_theme'
 pygments_style = "vs"
 # Select a different color scheme for dark mode
 pygments_style_dark = "github-dark"
+
+nbsphinx_prolog = """
+.. raw:: html
+
+    <style>
+        .nbinput, .nboutput, .output_area {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .prompt {
+            padding-right: 0;
+        }
+
+        .nboutput img {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        html:not(.dark) div.output_area.stderr {
+            background: transparent !important;
+            color: #b33030;
+        }
+
+        html.dark div.output_area.stderr {
+            background: transparent !important;
+            color: #fdd;
+        }
+
+        .input_area pre {
+            padding-top: 0.75em !important;
+            padding-bottom: 0.75em !important;
+        }
+
+        .output_area pre {
+            padding-top: 1em !important;
+        }
+
+        #content section>p {
+            line-height: 1.75rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        html.dark img {
+            filter: invert(1) hue-rotate(.5turn);
+        }
+
+        html.dark div.nbinput.container div.input_area {
+            border: 1px solid #303030;
+        }
+
+        html.dark div.rendered_html tbody tr:nth-child(odd) {
+            background: #202020;
+        }
+
+        html.dark div.rendered_html tbody {
+            color: white;
+        }
+
+        html.dark div.rendered_html thead {
+            color: white;
+            border-bottom: 1px solid lightgray;
+        }
+    </style>
+"""

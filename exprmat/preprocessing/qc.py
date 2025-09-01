@@ -129,9 +129,9 @@ def rna_qc(
     elif outlier_mode == 'tukey':
         umi_lower, umi_upper = tukey(adata.obs['n.umi'].to_numpy(), n = outlier_n)
     elif isinstance(outlier_mode, int):
-        umi_lower, umi_upper = 200, 100000
+        umi_lower, umi_upper = 200, 2147483646
         max_genes = outlier_mode
-    else: umi_lower, umi_upper = 200, 100000
+    else: umi_lower, umi_upper = 200, 2147483646
 
     f_obs = \
         (adata.obs['n.umi'] <= umi_upper) & \
@@ -152,10 +152,10 @@ def rna_qc(
     
     doublet_failed = False
     if doublet_method == 'scrublet':
-        try:
+        # try:
             scrublet_init(subset, random_state = 42)
             scrublet(subset)
-        except: doublet_failed = True
+        # except: doublet_failed = True
     
     adata.obs['filter'] = f_obs
     adata.obs['score.doublet'] = 0.0

@@ -25,11 +25,11 @@ import os
 from exprmat.reader.metadata import metadata, load_metadata
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import (
-    read_mtx_rna, read_h5ad_rna, read_table_rna, 
+    read_mtx_rna, read_h5ad_rna, read_table_rna, read_h5_rna,
     parse_tcr_10x, attach_splice_reads_mtx, attach_splice_reads_loom
 )
 from exprmat.reader.matcher import attach_tcr
-from exprmat.ansi import warning, info, error, red, green
+from exprmat.ansi import warning, info, error, red, green, pprog
 from exprmat import config as cfg
 import exprmat.reader.static as st
 import exprmat as em
@@ -96,19 +96,39 @@ class experiment:
                 # we automatically infer from the given location names to select
                 # the correct way of loading samples:
 
-                if i_loc.endswith('.tsv.gz') or i_loc.endswith('.csv.gz') or \
-                    i_loc.endswith('.tsv') or i_loc.endswith('.csv'):
+                if i_loc.endswith('.tsv.gz') or i_loc.endswith('.tsv'):
 
                     self.modalities['rna'][i_sample] = read_table_rna(
                         src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = '\t'
                     )
 
-                elif i_loc.endswith('.h5') or i_loc.endswith('.h5ad'):
+                elif i_loc.endswith('.csv.gz') or i_loc.endswith('.csv'):
+
+                    self.modalities['rna'][i_sample] = read_table_rna(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ','
+                    )
+                
+                elif i_loc.endswith('.ssv.gz') or i_loc.endswith('.ssv'):
+
+                    self.modalities['rna'][i_sample] = read_table_rna(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ' '
+                    )
+
+                elif i_loc.endswith('.h5ad'):
 
                     self.modalities['rna'][i_sample] = read_h5ad_rna(
                         src = i_loc, metadata = meta, sample = i_sample,
                         raw = False, default_taxa = i_taxa
+                    )
+
+                elif i_loc.endswith('.h5'):
+                    
+                    self.modalities['rna'][i_sample] = read_h5_rna(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
                     )
 
                 else:
@@ -293,6 +313,11 @@ class experiment:
                 datarows = []
                 example_row = None
 
+                if len(meta['taxa'].unique()) != 1:
+                    error('failed to merge rna experiments with different reference.')
+
+                i_taxa = meta['taxa'].unique().tolist()[0]
+
                 for sid in range(len(meta)):
 
                     prop = meta.iloc[sid]
@@ -335,7 +360,7 @@ class experiment:
                 example_row['sample'] = 'bulk-rna'
                 example_row['location'] = ':/rna/bulk-rna'
                 example_row['group'] = '.'
-                example_row['taxa'] = '.'
+                example_row['taxa'] = i_taxa
                 example_row['modality'] = 'rna'
                 example_row['batch'] = 'autogen'
 
@@ -455,7 +480,7 @@ class experiment:
                 example_row['sample'] = 'bulk-atac'
                 example_row['location'] = ':/atac/bulk-atac'
                 example_row['group'] = '.'
-                example_row['taxa'] = '.'
+                example_row['taxa'] = i_taxa
                 example_row['modality'] = 'atac'
                 example_row['batch'] = 'autogen'
 
@@ -1441,6 +1466,9 @@ class experiment:
 
     def run_rna_umap(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_umap, **kwargs)
+    
+    def run_rna_diffmap(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_diffmap, **kwargs)
 
     def run_rna_mde(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_mde, **kwargs)
@@ -1560,6 +1588,21 @@ class experiment:
     
     def run_rna_impute_magic(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_impute_magic, **kwargs) 
+
+    def run_rna_layout_graph(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_layout_graph, **kwargs) 
+
+    def run_rna_principle_tree(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree, **kwargs) 
+
+    def run_rna_principle_tree_explore_sigma(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree_explore_sigma, **kwargs)
+
+    def run_rna_principle_tree_root(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree_root, **kwargs)
+
+    def run_rna_principle_tree_pseudotime(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree_pseudotime, **kwargs)
     
     def run_atac_make_bins(self, run_on_samples = False, **kwargs):
         # bins can be made directly from bedgraph files if there is no alignment bam provided.
@@ -1977,6 +2020,11 @@ class experiment:
     def plot_rna_cnmf_distance_usages(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_cnmf_distance_usages, **kwargs)
     
+    def plot_rna_graph(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_graph, **kwargs)
+
+    def plot_rna_principle_tree_segments(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_principle_tree_segments, **kwargs)
 
     def plot_atac_qc(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.atac_plot_qc, **kwargs)
@@ -2299,7 +2347,7 @@ class experiment:
 
     def __repr__(self):
 
-        from exprmat.ansi import green, cyan, red, yellow
+        from exprmat.ansi import green, cyan, red, yellow, common_length
 
         def print_anndata(adata: ad.AnnData):
             print(yellow('annotated data'), 'of size', adata.n_obs, '×', adata.n_vars)
@@ -2383,6 +2431,7 @@ class experiment:
             print(red('[*]'), 'composed of samples:')
             len_mod = 2
             len_batch = 2
+            len_sample = 2
             
             for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
                 self.metadata.dataframe['location'], 
@@ -2394,6 +2443,10 @@ class experiment:
             ):
                 if len(i_mod) > len_mod: len_mod = len(i_mod)
                 if len(i_batch) > len_batch: len_batch = len(i_batch)
+                if len(i_sample) > len_sample: len_sample = len(i_sample)
+
+            if len_batch > 30: len_batch = 30
+            if len_sample > 30: len_sample = 30
 
             for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
                 self.metadata.dataframe['location'], 
@@ -2413,8 +2466,12 @@ class experiment:
                 p_sample = i_sample if len(i_sample) < 30 else i_sample[:27] + ' ..'
                 p_batch = i_batch if len(i_batch) < 30 else i_batch[:27] + ' ..'
                 print(
-                    f'  {p_sample:30}', cyan(f'{i_mod:13}'), yellow(f'{i_taxa:4}'),
-                    f'batch {green(f"{p_batch:12}")}',
+                    ' ',
+                    common_length(i_sample, len_sample), ' ',
+                    cyan(common_length(i_mod, len_mod)), 
+                    yellow(f'{i_taxa:4}'), ' ',
+                    f'batch {green(common_length(i_batch, len_batch))}', ' ',
+                    'of size',
                     red('dataset not loaded') if not loaded else 
                     f'{green(str(self.modalities[i_mod][i_sample].n_obs))} × ' +
                     f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}'
@@ -2454,12 +2511,14 @@ def load_experiment(direc, load_samples = True, load_subset = None):
     version = update(meta, direc, version)
 
     meta.dataframe = meta.dataframe.loc[
-        ['.' in x for x in meta.dataframe['modality']], :
+        ['.' not in x for x in meta.dataframe['modality']], :
     ].copy()
 
     modalities = {}
     if load_samples:
+        prog = pprog(desc = 'loading samples', total = len(meta.dataframe['sample']))
         for modal, samp in zip(meta.dataframe['modality'], meta.dataframe['sample']):
+            prog.update()
             if '.' in modal: continue
             attempt = os.path.join(direc, modal, samp + '.h5ad')
             if os.path.exists(attempt):

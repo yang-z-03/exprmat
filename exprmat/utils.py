@@ -414,6 +414,17 @@ seurat_to_10x <- function(srat, outdir) {
     writeMM(sparse, file = paste(outdir, 'matrix.mtx', sep = '/'))
 }
 
+seurat_to_adata <- function(srat, outfile) {
+    
+    adata <- anndata::AnnData(
+        X = srat @ assays $ RNA @ counts |> t(),
+        obs = srat @ meta.data
+    )
+
+    adata $ write_h5ad(outfile)
+    adata
+}
+
 spmatrix_to_mtx <- function(sp, outdir) {
     features <- data.frame(
         ensembl = rownames(sp),
@@ -809,3 +820,46 @@ def supports_tensorcore():
     import torch
     if not torch.cuda.is_available(): return False
     else: return torch.cuda.get_device_properties(0).major >= 7
+
+
+def get_init_pos_from_paga(
+    adata,
+    adjacency = None,
+    random_state = 0,
+    neighbors_key = None,
+    paga_slot = 'paga',
+    obsp = None,
+):
+    
+    np.random.seed(random_state)
+    if adjacency is None:
+        adjacency = adata.obsp[adata.uns[neighbors_key]['connectivities_key']]
+    if "pos" not in adata.uns.get(paga_slot, {}):
+        error('plot paga first, this will generate `pos` in `paga` slot.')
+
+    groups = adata.obs[adata.uns[paga_slot]["groups"]]
+    pos = adata.uns[paga_slot]["pos"]
+    connectivities_coarse = adata.uns[paga_slot]["connectivities"]
+    init_pos = np.ones((adjacency.shape[0], 2))
+
+    for i, group_pos in enumerate(pos):
+        subset = (groups == groups.cat.categories[i]).values
+        neighbors = connectivities_coarse[i].nonzero()
+        if len(neighbors[1]) > 0:
+            connectivities = connectivities_coarse[i][neighbors]
+            nearest_neighbor = neighbors[1][np.argmax(connectivities)]
+            noise = np.random.random((len(subset[subset]), 2))
+            dist = group_pos - pos[nearest_neighbor]
+            noise = noise * dist
+            init_pos[subset] = group_pos - 0.5 * dist + noise
+
+        else: init_pos[subset] = group_pos
+
+    return init_pos
+
+
+def savefig(
+    fig, path, **kwargs
+):
+    if 'bbox_inches' in kwargs.keys(): kwargs.pop('bbox_inches')
+    fig.savefig(path, bbox_inches = 'tight', **kwargs)

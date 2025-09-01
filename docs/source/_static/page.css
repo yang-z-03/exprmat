@@ -3,9 +3,9 @@
     grid-template-columns:300px minmax(0,1fr) !important; 
 }
 
-@media (min-width: 1400px){
+@media (min-width: 1600px){
     .container{
-        max-width: 1500px !important;
+        max-width: 1700px !important;
     }
 }
 

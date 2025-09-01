@@ -129,6 +129,10 @@ def matrix_plot(
     if annotations is not None and isinstance(annotations, list):
         ax_annot = ax.inset_axes([1.02, 0, 0.05, 1], sharey = ax)
         annot_u = list(set(annotations))
+        # sort it
+        if all([str(x).isdigit() for x in annot_u]):
+            annot_u = sorted(annot_u, key = int)
+        else: annot_u = sorted(annot_u, key = str)
         annot_n = [annot_u.index(x) for x in annotations]
 
         from exprmat.plotting import palettes

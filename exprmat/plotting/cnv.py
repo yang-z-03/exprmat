@@ -60,7 +60,7 @@ def chromosome_heatmap(
 
     labels = list(chr_pos_dict.keys())
     if draw_autosome_only:
-        labels = [x if len(x) <= 2 else '' for x in labels]
+        labels = [x if len(x) <= 5 else '' for x in labels]
 
     return_ax_dic = sc.pl.heatmap(
         tmp_adata,
@@ -70,7 +70,7 @@ def chromosome_heatmap(
         cmap = mpl(cmap),
         show_gene_labels = False,
         var_group_positions = var_group_positions,
-        var_group_labels = list(chr_pos_dict.keys()),
+        var_group_labels = labels,
         show = False,
         ** kwargs,
     )

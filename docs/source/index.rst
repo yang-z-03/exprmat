@@ -135,4 +135,5 @@ Anaconda 来管理包。请选择使用一个固定的包管理器，例如，�
     exprmat
     metadata
     experiment/index
+    notebooks/index
     palettes

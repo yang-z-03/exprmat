@@ -12,7 +12,7 @@ from anndata import AnnData
 from scanpy import logging
 from tqdm.contrib.concurrent import process_map
 
-from exprmat.ansi import error, warning, info, pproga
+from exprmat.ansi import error, warning, info, pproga, tqdma
 from exprmat.utils import ensure_array
 
 
@@ -143,9 +143,9 @@ def infercnv(
             itertools.repeat(dynamic_threshold),
             itertools.repeat(calculate_gene_values),
             tqdm_class = pproga,
-            max_workers=cpu_count() if n_jobs is None else n_jobs,
+            max_workers = cpu_count() if n_jobs is None else n_jobs,
         ),
-        strict=False,
+        strict = False,
     )
 
     res = scipy.sparse.vstack(chunks)

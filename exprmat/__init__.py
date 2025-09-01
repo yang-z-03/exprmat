@@ -108,10 +108,11 @@ for finder in default_finders:
 basepath = config['data']
 
 # core method exports
-from exprmat.utils import setup_styles
+from exprmat.utils import setup_styles, savefig
 from exprmat.ansi import error, warning, info, pprog, pproga
 from exprmat.reader.experiment import experiment, load_experiment
 from exprmat.reader.metadata import metadata, load_metadata
+import exprmat.reader.static as st
 
 
 setup_styles()
@@ -127,7 +128,8 @@ def version_db():
         with open(version_file, 'r') as vf:
             db_ver = vf.read().strip()
     
-    return db_ver
+    if db_ver is None: return None
+    return tuple([int(x) for x in db_ver.split('.')])
 
 
 # perform database integrity check.
@@ -136,9 +138,9 @@ if PERFORM_DATABASE_CHECK:
     if db_ver is None: 
         warning('the database is not installed.')
         print(DATABASE_SETUP_MESSAGE)
-    elif db_ver != importlib.metadata.version("exprmat"):
+    elif ".".join([str(x) for x in db_ver]) != importlib.metadata.version("exprmat"):
         warning('the database version do not match the package version')
-        warning(f'db version: {db_ver}  package version: {importlib.metadata.version("exprmat")}')
+        warning(f'db version: {".".join([str(x) for x in db_ver])}  package version: {importlib.metadata.version("exprmat")}')
 
 
 def cuda():
@@ -168,11 +170,11 @@ def version():
     from exprmat.ansi import info, error, format_file_size
 
     db_ver = version_db()
-    info(f'exprmat {MAJOR}.{MINOR}.{REVISION} / exprmat-db {db_ver if db_ver is not None else "(Not installed)"}')
+    info(f'exprmat {MAJOR}.{MINOR}.{REVISION} / exprmat-db {".".join([str(x) for x in db_ver]) if db_ver is not None else "(Not installed)"}')
     info(f'os: {os.name} ({sys.platform})  platform version: {platform.release()}')
     info(f'loaded configuration from {finder}')
     info(f'current working directory: {os.getcwd()}')
-    info(f'current database directory: {config["data"]} ({db_ver if db_ver is not None else "(Not found)"})')
+    info(f'current database directory: {config["data"]} ({".".join([str(x) for x in db_ver]) if db_ver is not None else "(Not found)"})')
     memory()
     return (MAJOR, MINOR, REVISION)
 
@@ -206,5 +208,8 @@ __all__ = [
     'warning',
     'info',
     'pprog',
-    'pproga'
+    'pproga',
+    'savefig',
+
+    'st',
 ]

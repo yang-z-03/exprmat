@@ -58,6 +58,7 @@ class index_object_handler:
 
 def embedding_atlas(
     adata, basis, color,
+    embedding_dims = [0, 1],
     hue_order = None,
     title = None, figsize = (4, 4), ax = None,
     cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
@@ -76,6 +77,10 @@ def embedding_atlas(
 
     cvs = ds.Canvas(plot_width = int(figsize[0] * dpi * res_factor), plot_height = int(figsize[1] * dpi * res_factor))
     embedding = adata.obsm[basis]
+    if isinstance(embedding, pd.DataFrame):
+        embedding = embedding.iloc[:, embedding_dims].copy()
+    else: embedding = embedding[:, embedding_dims].copy()
+
     df = pd.DataFrame(embedding, columns=['x', 'y'])
 
     if color in adata.obs.columns:
@@ -287,7 +292,7 @@ def embedding_atlas(
 
 def embedding(
     adata, basis, color,
-    slot = 'X',
+    slot = 'X', embedding_dims = [0, 1],
     
     # query plotting options
     ptsize = 8,
@@ -343,10 +348,16 @@ def embedding(
         embedding = basis.data 
     elif isinstance(basis, np.matrix) or isinstance(basis, np.ndarray):
         embedding = basis
-
+    
+    embedding = embedding[:, embedding_dims].copy()
     df = pd.DataFrame(embedding, columns = ['x', 'y'])
 
-    if color in adata.obs.columns:
+    if color is None:
+        labels = ['.'] * adata.n_obs
+        cmap = None
+        legend = False
+        annotate = False
+    elif color in adata.obs.columns:
         labels = adata.obs[color].tolist()
     elif color in adata.var_names:
         X = choose_layer(adata[:, color], layer = slot)

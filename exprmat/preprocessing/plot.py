@@ -1,4 +1,5 @@
 
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
@@ -65,13 +66,13 @@ def rna_plot_gene_histogram(adata, sample_name, ax):
     ax.set_title(sample_name if len(sample_name) < 20 else sample_name[:17] + ' ..')
 
     ax.vlines(
-        x = [0, 150], ymin = 0, ymax = 10,
+        x = [0, 150], ymin = 0, ymax = np.max(h[0]),
         colors = 'red', linestyles = 'dotted'
     )
 
     ax.vlines(
-        x = [300, 600], ymin = 0, ymax = 10,
+        x = [300, 600], ymin = 0, ymax = np.max(h[0]),
         colors = 'black', linestyles = 'dotted'
     )
 
-    ax.set_yscale('log')
+    # ax.set_yscale('log')

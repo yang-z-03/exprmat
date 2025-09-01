@@ -177,9 +177,31 @@ def run_umap(
     a: float | None = None,
     b: float | None = None,
     key_added: str | None = None,
-    neighbors_key: str = "neighbors"
+    neighbors_key: str = "neighbors",
+    use_gpu = False
 ):
 
+    if use_gpu:
+
+        from exprmat.reduction.umap import umap_gpu
+        umap_gpu(
+            adata, 
+            min_dist = min_dist,
+            spread = spread,
+            n_components = n_components,
+            maxiter = maxiter,
+            alpha = alpha,
+            negative_sample_rate = negative_sample_rate,
+            init_pos = init_pos,
+            random_state = random_state,
+            a = a,
+            b = b,
+            key_added = key_added,
+            neighbors_key = neighbors_key
+        )
+
+        return
+    
     key_obsm, key_uns = ("umap", "umap") if key_added is None else [key_added] * 2
     if neighbors_key is None:
         neighbors_key = "neighbors"

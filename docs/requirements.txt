@@ -6,3 +6,4 @@ mudata
 pandas
 scanpy
 sphinx_design
+nbsphinx
