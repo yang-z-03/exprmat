@@ -134,5 +134,9 @@ nbsphinx_prolog = """
             color: white;
             border-bottom: 1px solid lightgray;
         }
+
+        table {
+            table-layout: auto !important;
+        }
     </style>
 """
