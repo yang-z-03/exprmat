@@ -138,5 +138,15 @@ nbsphinx_prolog = """
         table {
             table-layout: auto !important;
         }
+
+        .nbinput .prompt .highlight {
+            padding-top: 0.45em !important;
+            padding-right: 0.45em !important;
+        }
+
+        .nboutput .prompt .highlight {
+            padding-top: 0.5em !important;
+            padding-right: 0.45em !important;
+        }
     </style>
 """
