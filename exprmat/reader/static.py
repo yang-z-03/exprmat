@@ -76,7 +76,7 @@ def rna_qc(
     min_genes = 300
 ):
     from exprmat.preprocessing.qc import rna_qc as _rna_qc
-    _rna_qc(
+    return _rna_qc(
         adata, sample = sample_name, mt_seqid = mt_seqid,
         mt_percent = mt_percent,
         ribo_genes = ribo_genes,
@@ -152,7 +152,8 @@ def rna_scale_pca(
 
 def rna_scvi(
     adata, sample_name, key_added = 'scvi', batch = None, n_comps = 30, 
-    hvg = 'vst.hvg', key_counts = 'counts', savepath = '', **kwargs
+    hvg = 'vst.hvg', key_counts = 'counts', savepath = '', seeding = False,
+    imputed_label_key = 'cell.type.imputed', **kwargs
 ):
 
     if hvg not in adata.var.keys():
@@ -171,29 +172,43 @@ def rna_scvi(
     # select the batch metadata
     if batch: hvg_subset.obs['batch'] = adata.obs[batch].tolist()
     else: hvg_subset.obs['batch'] = '.'
+
+    if 'label_key' in kwargs.keys():
+        hvg_subset.obs[kwargs['label_key']] = adata.obs[kwargs['label_key']].tolist()
     
     # build scvi model
     from exprmat.reduction.scvi import scvi
-    model, latent = scvi(
-        hvg_subset, batch_key = 'batch', layer_key = 'X', n_latent = n_comps,
-        **kwargs
-    )
+    if seeding:
+        model, latent, imputed = scvi(
+            hvg_subset, batch_key = 'batch', layer_key = 'X', n_latent = n_comps,
+            seeding = True, **kwargs
+        )
+        adata.obsm[key_added] = latent
+        adata.obs[imputed_label_key] = imputed
+
+    else:
+        model, latent = scvi(
+            hvg_subset, batch_key = 'batch', layer_key = 'X', n_latent = n_comps,
+            **kwargs
+        )
+        adata.obsm[key_added] = latent
 
     # save the model
     import os
+    modeltype = 'scanvi' if seeding else 'scvi'
     if sample_name == 'integrated':
-        attempt = os.path.join(savepath, 'scvi', key_added)
-    else: attempt = os.path.join(savepath, 'rna', 'scvi', sample_name, key_added)
+        attempt = os.path.join(savepath, modeltype, key_added)
+    else: attempt = os.path.join(savepath, 'rna', modeltype, sample_name, key_added)
     
     os.makedirs(attempt, exist_ok = True)
     model.save(attempt, overwrite = True)
-    adata.obsm[key_added] = latent
+    
 
     adata.uns[key_added] = {
         'model': attempt,
         'n_latent': n_comps,
         'batch_key': batch,
-        'type': 'scvi'
+        'type': 'scanvi' if seeding else 'scvi'
     }
     
     pass
@@ -260,6 +275,20 @@ def rna_markers(adata, sample_name, **kwargs):
     markers(adata, **kwargs)
 
 
+def rna_markers_to_signatures(
+    adata, sample_name, slot = 'markers', key = 'names', 
+    groups = None, n = 50, **kwargs
+):
+    
+    if not groups: groups = adata.uns[slot]['differential'].keys()
+    geneset = {}
+    for g in groups:
+        m = rna_get_markers(adata, sample_name, de_slot = slot, group_name = g, **kwargs)
+        geneset[g] = m.head(n)[key].tolist()
+    
+    return geneset
+
+
 def rna_markers_deseq(
     adata, sample_name, counts = 'counts', 
     metadata = ['sample', 'group'], formula = '~ group',
@@ -292,7 +321,7 @@ def rna_markers_deseq(
 
     dds = deseq_dataset(adata = annd, design = formula, **kwargs)
     dds.deseq2()
-
+    
     dstat = deseq_stats(dds, [variable, experiment, control], **statistics_params)
     dstat.summary()
 
@@ -798,7 +827,7 @@ def rna_impute_magic(
     )
 
     imp = imputer.fit_transform(adata)
-    adata.layers[key_added] = imp.X
+    adata.layers[key_added] = np.matrix(imp.X)
     if hasattr(imputer, 'errors'): adata.uns['magic.errors'] = getattr(imputer, 'errors')
     if hasattr(imputer, 't_opt'): adata.uns['magic.t'] = getattr(imputer, 't_opt')
 
@@ -924,6 +953,66 @@ def rna_principle_tree_pseudotime(
 ):
     from exprmat.trajectory.pseudotime import pseudotime
     pseudotime(adata, trajectory_key = trajectory_key, n_jobs = n_jobs, n_map = n_map, seed = seed, **kwargs)
+
+
+def rna_principle_tree_rename_milestones(adata, sample_names, rename = {}, trajectory_key: str = 'ppt'):
+    
+    dic = adata.uns[f'{trajectory_key}.graph']
+    if 'milestone_names' in dic.keys():
+        names = dic['milestone_names']
+    else: names = {}
+
+    milestones = np.concatenate([dic["tips"], dic["forks"]])
+    for mkey in milestones:
+        if str(mkey) in rename.keys():
+            names[str(mkey)] = rename[str(mkey)]
+        elif int(mkey) in rename.keys():
+            names[str(mkey)] = rename[int(mkey)]
+    
+    adata.uns[f'{trajectory_key}.graph']['milestone_names'] = names
+
+
+def rna_principle_tree_trace(adata, sample_names, **kwargs):
+    from exprmat.trajectory.trace import trace_trajectory
+    trace_trajectory(adata, **kwargs)
+
+
+def rna_metacell(
+    adata, sample_names, hvg_key = 'vst.hvg', 
+    counts_key = 'counts', lognorm_key = 'X',
+    datatypes = ['rna'],
+    **kwargs
+):
+    from exprmat.metacell import assign_metacell, aggregate_metacell
+    from exprmat.utils import choose_layer
+    from exprmat.preprocessing import scale
+    
+    hvg_subset = adata[:, adata.var[hvg_key]].copy()
+    scale(hvg_subset, lognorm = lognorm_key, dest = 'scaled')
+
+    counts = choose_layer(hvg_subset, layer = counts_key)
+    scaled = choose_layer(hvg_subset, layer = 'scaled')
+    origin_lognorm = choose_layer(adata, layer = lognorm_key)
+    origin_counts = choose_layer(adata, layer = counts_key)
+
+    size_factors = np.array((
+        origin_counts.sum(axis = 1) / origin_lognorm.expm1().sum(axis = 1)
+    ).tolist()).reshape(-1, 1)
+
+    # requires densified counts.
+    # this will take up much memory, and maybe directly loaded into gpu.
+    from scipy.sparse import issparse
+    if issparse(counts): counts = counts.todense()
+
+    assignment = assign_metacell(
+        [scaled], [size_factors], [counts], datatypes = ['rna'],
+        **kwargs
+    )
+
+    metacell = aggregate_metacell([adata], assignment)
+    metacell[0].var = adata.var
+    metacell[0].obs_names = [f'mc:{sample_names}:{i + 1}' for i in range(metacell[0].n_obs)]
+    return metacell[0]
 
 
 def atac_filter_cells(
@@ -1985,6 +2074,11 @@ def rna_plot_principle_tree_segments(adata, sample_name, **kwargs):
     return trajectory(adata, **kwargs)
 
 
+def rna_plot_principle_tree_trace(adata, sample_name, **kwargs):
+    from exprmat.plotting.trajectory import trace
+    return trace(adata, **kwargs)
+
+
 def atac_plot_qc(adata, sample_name, **kwargs):
     from exprmat.plotting.atac import atac_qc_metrics
     return atac_qc_metrics(adata, sample_name, **kwargs)
@@ -2268,10 +2362,3 @@ def parallel_return_self(mapx, func, kwargs):
 
     # data, key, out
     return mapx[0], mapx[1], out
-
-
-def test(data, name, a = 0):
-    import time
-    print(name, 'begin')
-    time.sleep(5)
-    print(name, 'end')

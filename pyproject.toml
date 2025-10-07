@@ -20,7 +20,7 @@ description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
 requires-python = ">=3.9, <3.13"
-version = "0.1.43"
+version = "0.1.46"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]
@@ -105,7 +105,8 @@ dependencies = [
     'xgboost',
     'simpleppt',
     'elpigraph-python',
-    'dask-expr >= 2.0'
+    'dask-expr >= 2.0',
+    'einops == 0.8.1',
 ]
 
 [project.optional-dependencies]

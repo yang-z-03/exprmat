@@ -108,7 +108,7 @@ def highly_variable(
                 (df['means'] < max_mean) & 
                 (df['norm.disp'] > min_disp) &
                 (df['norm.disp'] < max_disp)
-            ).tolist()
+            )
 
         else:
             if n_top_genes > adata.n_vars:

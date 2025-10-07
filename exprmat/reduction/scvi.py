@@ -33,7 +33,13 @@ def scvi(
     progress_bar_refresh_rate = 1, 
     simple_progress_bar = True, 
     logger = None, 
-    log_every_n_steps = 10
+    log_every_n_steps = 10,
+
+    # seeding options
+    seeding = False,
+    label_key = 'cell.type',
+    unknown_value = 'imputed',
+    scanvi_training_epochs = None
 ):
 
     # apply inplace with adata.X.
@@ -46,7 +52,7 @@ def scvi(
 
     scvitools.model.SCVI.setup_anndata(
         adata, layer = None if layer_key == 'X' else layer_key, 
-        batch_key = batch_key
+        batch_key = batch_key, labels_key = label_key if seeding else None
     )
 
     model = scvitools.model.SCVI(
@@ -79,5 +85,26 @@ def scvi(
             log_every_n_steps = log_every_n_steps,
         )
 
+    if seeding:
+
+        scanvi_model = scvitools.model.SCANVI.from_scvi_model(
+            scvi_model = model,
+            unlabeled_category = unknown_value,
+        )
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            scanvi_model.train(
+                max_epochs = scanvi_training_epochs, 
+                accelerator = accelerator, 
+                devices = devices
+            )
+
+        model = scanvi_model
+
+
     latent = model.get_latent_representation()
-    return model, latent
+    if seeding:
+        imputed = model.predict(adata)
+        return model, latent, imputed
+    else: return model, latent

@@ -7,7 +7,12 @@ from exprmat.ansi import error, warning, info
 
 
 def not_yet_normalized(X):
-    return np.allclose(np.ravel(X[:5].data if issparse(X) else X[:5]) % 1, 0, atol=1e-3)
+
+    # this logic sometimes have bugs.
+    # just cancel it for now.
+    
+    return False
+    return np.allclose(np.ravel(X[:5].data if issparse(X) else X[:5]) % 1, 0, atol = 1e-3)
 
 
 def moments(

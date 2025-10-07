@@ -78,7 +78,10 @@ def update_39(mod, fpath):
             '.end': 'end',
         }, inplace = False)
 
-
+    if not os.path.exists(fpath):
+        warning(f'{fpath} is declared but do not exist on disk.')
+        return
+    
     file = h5py.File(fpath, 'r+')
 
     if mod in ['subset', 'integrated']:
@@ -106,6 +109,14 @@ def update_39(mod, fpath):
     file.close()
 
 
+def trycatch(fun, *args):
+    try:
+        fun(*args)
+    except:
+        warning('routine failed and skipped.')
+
+from functools import partial
+
 UPDATE_TASK = [
-    update_39
+    partial(trycatch, update_39)
 ]

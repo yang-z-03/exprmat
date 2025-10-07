@@ -12,7 +12,7 @@ def barplot(
     adata, *, gene, 
     slot = 'X', group = 'cell.type', selected_groups = None, selected_splits = None,
     split = 'treat', palette = ['red', 'black'], ax = None, style = 'box',
-    size = (6,3), dpi = 100, violin_kwargs = {}
+    size = (6,3), dpi = 100, violin_kwargs = {}, legend = True
 ):
     
     plt.rcParams["ytick.labelright"] = False
@@ -81,7 +81,8 @@ def barplot(
         grid_color = 'lightgray'
     )
             
-    axes.legend(bbox_to_anchor = (1, 1), loc = 'upper left', borderaxespad = 0, frameon = False)
+    if legend: axes.legend(bbox_to_anchor = (1, 1), loc = 'upper left', borderaxespad = 0, frameon = False)
+    else: axes.get_legend().remove()
     axes.set_xlabel('')
     axes.set_ylabel(gene)
     # axes.set_xticks(selected_groups)

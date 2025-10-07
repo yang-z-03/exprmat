@@ -11,6 +11,7 @@ from functools import reduce
 from random import seed, sample
 from typing import Union, Optional, Sequence, Tuple, List, Dict
 
+import numpy as np
 import pandas as pd 
 import anndata
 import numpy as np 
@@ -97,6 +98,13 @@ def rna_qc(
     nomenclature (commonly though, be named after Rpl and Rps) You'd better specify
     the ``ribo_genes`` array to proper ENSEMBL IDs or else the program will guess from the names.
     '''
+
+    # remove empty detection.
+    adata.var['n.umi'] = np.sum(adata.X, axis = 0).tolist()[0]
+    adata.obs['n.umi'] = np.sum(adata.X, axis = 1).transpose().tolist()[0]
+    adata = adata[
+        adata.obs['n.umi'] > 0.1, adata.var['n.umi'] > 0.1
+    ].copy()
     
     # manual calculations of ribosomal and mitochondrial genes
     mask_mito = [x == mt_seqid for x in adata.var['chr'].tolist()]
@@ -105,7 +113,6 @@ def rna_qc(
                     for x in adata.var['gene'].tolist()] if ribo_genes is None else \
                 [x in ribo_genes for x in adata.var['gene'].tolist()]
 
-    import numpy as np
     info(f'found {np.sum(np.array(mask_mito))} mitochondrial genes (expected 13)')
     info(f'found {np.sum(np.array(mask_ribo))} ribosomal genes')
 

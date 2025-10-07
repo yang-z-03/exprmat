@@ -65,45 +65,50 @@ def vscore(E, min_mean = 0, n_bins = 50, fit_percentile = 0.1, error_weight = 1)
 
     n_cell = E.shape[0]
 
-    mu_gene = E.mean(axis = 0).A.squeeze() # mean expression of genes
-    min_expr_filter = np.nonzero(mu_gene > min_mean)[0]
-    mu_gene = mu_gene[min_expr_filter]
-
-    tmp = E[:, min_expr_filter]
-    tmp.data **= 2
-    var_gene = tmp.mean(axis = 0).A.squeeze() - mu_gene ** 2
-    ff_gene = var_gene / mu_gene # signal to noise ratio, fano factor
-    del tmp
-
-    data_x = np.log(mu_gene)
-    data_y = np.log(ff_gene / mu_gene)
-
-    # this plots the expression of genes as x, and the variance of genes as y
-    # and both highly-variable genes and stable housekeeping genes selection can
-    # be performed on this expression - variance plot using running quantile.
-    x, y = running_quantile(data_x, data_y, fit_percentile, n_bins)
-    x = x[~ np.isnan(y)]
-    y = y[~ np.isnan(y)]
-
-    generalize_log = lambda input: np.log(input[1] * np.exp(- input[0]) + input[2])
-    h, b = np.histogram(np.log(ff_gene[mu_gene > 0]), bins = 200)
-    b = b[:-1] + np.diff(b) / 2
-    max_index = np.argmax(h)
-    c = np.max((np.exp(b[max_index]), 1))
-    # fit y = log(c * exp(x)) + b
-    error_func = lambda b2: np.sum(abs(generalize_log([x, c, b2]) - y) ** error_weight)
-    initial_b = 0.1
-    b = scipy.optimize.fmin(func = error_func, x0 = [initial_b], disp = False)
-    a = c / (1 + b) - 1
-
-    v_scores = ff_gene / ((1 + a) * (1 + b) + b * mu_gene)
-
+    import warnings
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        # encounter invalid values (inf/nan)
-        cv_eff = np.sqrt((1 + a) * (1 + b) + 1e-300 - 1) # add a small sigma
 
-    cv_input = np.sqrt(b)
+        mu_gene = E.mean(axis = 0).A.squeeze() # mean expression of genes
+        min_expr_filter = np.nonzero(mu_gene > min_mean)[0]
+        mu_gene = mu_gene[min_expr_filter]
+
+        tmp = E[:, min_expr_filter]
+        tmp.data **= 2
+        var_gene = tmp.mean(axis = 0).A.squeeze() - mu_gene ** 2
+        ff_gene = var_gene / mu_gene # signal to noise ratio, fano factor
+        del tmp
+
+        data_x = np.log(mu_gene)
+        data_y = np.log(ff_gene / mu_gene)
+
+        # this plots the expression of genes as x, and the variance of genes as y
+        # and both highly-variable genes and stable housekeeping genes selection can
+        # be performed on this expression - variance plot using running quantile.
+        x, y = running_quantile(data_x, data_y, fit_percentile, n_bins)
+        x = x[~ np.isnan(y)]
+        y = y[~ np.isnan(y)]
+
+        generalize_log = lambda input: np.log(input[1] * np.exp(- input[0]) + input[2])
+        h, b = np.histogram(np.log(ff_gene[mu_gene > 0]), bins = 200)
+        b = b[:-1] + np.diff(b) / 2
+        max_index = np.argmax(h)
+        c = np.max((np.exp(b[max_index]), 1))
+        # fit y = log(c * exp(x)) + b
+        error_func = lambda b2: np.sum(abs(generalize_log([x, c, b2]) - y) ** error_weight)
+        initial_b = 0.1
+        b = scipy.optimize.fmin(func = error_func, x0 = [initial_b], disp = False)
+        a = c / (1 + b) - 1
+
+        v_scores = ff_gene / ((1 + a) * (1 + b) + b * mu_gene)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            # encounter invalid values (inf/nan)
+            cv_eff = np.sqrt((1 + a) * (1 + b) + 1e-300 - 1) # add a small sigma
+
+        cv_input = np.sqrt(b)
+
     return v_scores, cv_eff, cv_input, min_expr_filter, mu_gene, ff_gene, a, b
 
 
@@ -518,7 +523,7 @@ def disp_stats(df: pd.DataFrame, flavor) -> pd.DataFrame:
         disp_bin_stats.loc[one_gene_per_bin, "dev"] = disp_bin_stats.loc[one_gene_per_bin, "avg"]
         disp_bin_stats.loc[one_gene_per_bin, "avg"] = 0
 
-    elif flavor == "cell_ranger":
+    elif flavor == "cellranger":
 
         def mean_abs_dev(a):
             from statsmodels.robust import mad

@@ -83,7 +83,7 @@ def common_length(string: str, limit: int) -> str:
     cn = re.findall(cn_re, string)
     cn_length = len(cn)
     
-    if limit <= 5:
+    if limit < 5:
         x_str = string[-limit:]
         cn = len(re.findall(cn_re, x_str))
         while cn + len(x_str) > limit:
@@ -157,6 +157,75 @@ def yellow(x): return '\033[33m' + x + '\033[0m'
 def blue(x): return '\033[34m' + x + '\033[0m'
 def purple(x): return '\033[35m' + x + '\033[0m'
 def cyan(x): return '\033[36m' + x + '\033[0m'
+def annot(x): return '\033[90;3m' + x + '\033[0m'
+
+
+def dtypestr(dty):
+    string = str(dty)
+    if string == 'category': return 'cat'
+    elif 'float' in string: return string.replace('float', 'f')
+    elif 'int' in string: return string.replace('int', 'i')
+    elif string == 'object': return 'o'
+    return string
+
+
+def dtypemat(dty):
+    from numpy import matrix, ndarray
+    from scipy.sparse import csr_array, csr_matrix, csc_array, csc_matrix, coo_array, coo_matrix
+    from pandas import DataFrame
+
+    classdef = ''
+    if isinstance(dty, DataFrame): return 'df'
+    elif isinstance(dty, matrix): classdef = 'dense'
+    elif isinstance(dty, ndarray): classdef = 'arr'
+    elif isinstance(dty, csr_array): classdef = 'csra'
+    elif isinstance(dty, csr_matrix): classdef = 'csr'
+    elif isinstance(dty, csc_array): classdef = 'csca'
+    elif isinstance(dty, csc_matrix): classdef = 'csc'
+    elif isinstance(dty, coo_array): classdef = 'cooa'
+    elif isinstance(dty, coo_matrix): classdef = 'coo'
+    else: classdef = str(type(dty))
+    
+    size = ''
+    try:
+        if dty.shape[1] != dty.shape[0]: size = dty.shape[1]
+    except: pass
+    
+    ret = ':'.join([classdef, dtypestr(dty.dtype)])
+    if size != '': ret += f'({size})'
+    return ret
+
+
+def remove_ansi_escape_sequences(text):
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+
+def lenp(string: str):
+    return len(remove_ansi_escape_sequences(string))
+
+
+def wrap(array: list[str], sep = ' ', n = 100) -> list[str]:
+    results = []
+    cumulative = ''
+    lencum = 0
+
+    for a in array:
+
+        lenprint = lenp(a)
+
+        if lencum + lenprint + len(sep) <= n:
+            cumulative += (sep + a)
+            lencum += (len(sep) + lenprint)
+        else:
+            results += [cumulative[1:] if cumulative[0] == ' ' else cumulative]
+            cumulative = a
+            lencum = lenprint
+
+    if cumulative != '':
+        results += [cumulative[1:] if cumulative[0] == ' ' else cumulative]
+
+    return results
 
 
 progress_styles = {
@@ -168,10 +237,15 @@ progress_styles = {
 
 
 class pprog(tqdm):
-    def __init__(self, x, **kwargs):
-        super().__init__(x, **progress_styles, **kwargs)
+    def __init__(self, iterable = None, **kwargs):
+        super().__init__(iterable, **progress_styles, **kwargs)
 
 
 class pproga(tqdma):
-    def __init__(self, x, **kwargs):
-        super().__init__(x, **progress_styles, **kwargs)
+    def __init__(self, iterable = None, **kwargs):
+        super().__init__(iterable, **progress_styles, **kwargs)
+
+
+def tqinfo(x):
+    if SILENT: return
+    tqdm.write(cyan('[i] ') + x)

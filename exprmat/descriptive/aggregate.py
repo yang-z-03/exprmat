@@ -21,6 +21,13 @@ from exprmat.preprocessing.linear import get_size_factor_for_regions, normalize_
 from exprmat.ansi import error, warning, info
 
 
+methods = {
+    'mean': np.mean,
+    'sum': np.sum,
+    'median': np.median
+}
+
+
 def aggregate(
     adata, data = 'X', method = 'mean', method_args = {},
     obs_key = 'sample', var_key = None
@@ -56,10 +63,6 @@ def aggregate(
     mat = np.ndarray(shape = (len(obs_val), len(var_val)), dtype = np.float32)
     meth = None
 
-    methods = {
-        'mean': np.mean
-    }
-
     for i in range(len(obs_val)):
         for j in range(len(var_val)):
             
@@ -88,10 +91,6 @@ def aggregate_obs(
     
     mat = np.ndarray(shape = (len(obs_val), adata.n_vars), dtype = np.float32)
 
-    methods = {
-        'mean': np.mean
-    }
-
     for i in range(len(obs_val)):
         mat[i, :] = methods[method](
             source[obs == obs_val[i], :],
@@ -119,10 +118,6 @@ def aggregate_var(
         var = adata.var[var_key].to_numpy()
     
     mat = np.ndarray(shape = (adata.n_obs, len(var_val)), dtype = np.float32)
-
-    methods = {
-        'mean': np.mean
-    }
 
     for i in range(len(var_val)):
         mat[:, i] = methods[method](

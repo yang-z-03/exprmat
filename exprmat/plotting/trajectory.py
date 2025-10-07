@@ -5,21 +5,20 @@ import igraph
 from anndata import AnnData
 import matplotlib.collections
 from typing import Union, Optional, Sequence, Tuple, List
-import scanpy as sc
-from cycler import Cycler
 
 from pandas.api.types import is_categorical_dtype
 from scanpy.plotting._utils import savefig_or_show
 
 import matplotlib.patheffects as path_effects
 import matplotlib.text as mtext
-from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize, hex2color, rgb2hex
+import matplotlib.pyplot as plt
+from matplotlib.colors import hex2color, rgb2hex
 from numba import njit
 import math
 
 from exprmat.plotting.milestone import milestones as milestones_plot
 from exprmat import error, warning, info
+from exprmat.plotting.palettes import mpl
 
 
 def graph(
@@ -155,7 +154,7 @@ def trajectory(
     ).axes[0]
 
     if f"{trajectory_key}.graph" not in adata.uns:
-        raise ValueError("You need to run `principle_tree_pseudotime` first before plotting.")
+        raise ValueError("you need to run `principle_tree_pseudotime` first before plotting.")
 
     graph = adata.uns[f"{trajectory_key}.graph"]
     emb = adata.obsm[f"{basis}"]
@@ -292,10 +291,14 @@ def trajectory(
         if color_seg == 'milestones':
 
             for x in miles_ids.tolist():
-
+                
+                if "milestone_names" in graph.keys():
+                    names = graph['milestone_names']
+                else: names = {}
+                
                 text = mtext.Text(
                     x = proj.loc[x, 0], y = proj.loc[x, 1], # fontproperties = 'bold',
-                    text = str(x), 
+                    text = str(x) if str(x) not in names.keys() else names[str(x)], 
                     color = 'black', zorder = 106,
                     ha = 'center', va = 'center', size = annotate_fontsize
                 )
@@ -343,3 +346,65 @@ def cdist_numba(coords, out):
             (coords[i, 0] - coords[i + 1, 0]) ** 2
             + (coords[i, 1] - coords[i + 1, 1]) ** 2
         )
+
+
+def trace(
+    adata,
+    trace_key = 'trace',
+    trajectory_key = 'ppt',
+    values = 'fitted',
+    show_hvg_only = None,
+    show_leiden_only = None,
+    show_genes = None,
+    p_cutoff = 0.0001,
+    cmap = 'turbo',
+    figsize = (4, 8),
+    show_gene_names = None
+):
+    trace = adata.uns[trace_key]
+    if show_genes:
+        trace = trace[[x in show_genes for x in trace.obs['gene']], :].copy()
+    else:
+        if show_hvg_only: trace = trace[adata.var[show_hvg_only], :].copy()
+        if show_leiden_only: trace = trace[[int(x) in show_leiden_only for x in trace.obs['leiden']], :].copy()
+        trace = trace[(trace.obs['p'] < p_cutoff), :].copy()
+
+    fig, ax = plt.subplots(1, 1, figsize = figsize)
+
+    if values == 'expression': 
+        expr = trace.layers['expression'].copy()
+        expr[expr < 0] = 0
+        expr = expr / expr.max(1, keepdims = True)
+    elif values == 'fitted':
+        expr = trace.layers['scaled'].copy()
+
+    ax.imshow(expr, aspect = 'auto', cmap = mpl(cmap), interpolation = 'nearest')
+
+    # show gene names
+    if show_gene_names is None:
+        show_gene_names = expr.shape[0] < 50
+    
+    if show_gene_names:
+        ax.set_yticks(
+            [x for x in range(expr.shape[0])],
+            trace.obs['gene']
+        )
+        ax.set_xlabel('Pseudotime')
+
+    else:
+        prev_leiden = None
+        leidens = []
+        for x in trace.obs['leiden']:
+            if x != prev_leiden:
+                leidens.append(str(x))
+                prev_leiden = x
+            else: leidens.append('')
+
+        ax.set_yticks(
+            [x for x in range(expr.shape[0])],
+            leidens
+        )
+        ax.set_ylabel('Gene behavior patterns')
+        ax.set_xlabel('Pseudotime')
+
+    return fig

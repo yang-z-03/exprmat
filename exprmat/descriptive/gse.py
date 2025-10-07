@@ -218,7 +218,7 @@ def opa(
 
 
 def gsva(
-    adata, taxa, identifier = 'uppercase', gene_sets = 'kegg', lognorm = 'X',
+    adata, taxa, identifier = 'entrez', gene_sets = 'kegg', lognorm = 'X',
     n_cores = 1, kcdf = 'Gaussian', weight = 1, min_genes = 15, max_genes = 1000
 ):
     mat = choose_layer(adata, layer = lognorm)
@@ -238,9 +238,12 @@ def gsva(
     inp = inp.loc[~ inp.index.isna(), :]
     inp = inp.loc[~ inp.index.duplicated(), :].copy()
 
+    if isinstance(gene_sets, str):
+        gene_sets = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier)
+
     import gseapy as gp
     gsv = gp.gsva(
-        data = inp, gene_sets = get_genesets(taxa = taxa, name = gene_sets, identifier = identifier),
+        data = inp, gene_sets = gene_sets,
         kcdf = kcdf, weight = weight, min_size = min_genes, max_size = max_genes, seed = 42,
         threads = n_cores
     )

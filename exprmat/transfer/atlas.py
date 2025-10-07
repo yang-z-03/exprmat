@@ -11,6 +11,7 @@ def construct_atlas(
     expm: experiment, 
     key_counts = 'counts',
     key_batch = 'batch',
+    hvg = 'hvg',
     batch_cell_filter = 50,
 
     # scvi model settings
@@ -29,6 +30,11 @@ def construct_atlas(
     scanvi_unlabel = 'unknown',
     scanvi_max_epochs = 30,
     scanvi_samples_per_label = 200,
+
+    scvi_kwargs = {},
+    scanvi_kwargs = {},
+    scanvi_train_kwargs = {},
+    scvi_train_kwargs = {}
 ):
     """
     构建单细胞数据集的参考图谱（atlas）
@@ -116,6 +122,7 @@ def construct_atlas(
     atlas = expm.mudata['rna']
     savename = expm.subset if expm.subset is not None else 'integrated'
     path = os.path.join(expm.directory, 'scvi', savename)
+    scanvipath = os.path.join(expm.directory, 'scanvi', savename)
     
     if os.path.exists(path):
         error('the destination path `scvi/{savename}` is already occupied.')
@@ -125,15 +132,15 @@ def construct_atlas(
     # extract count matrix.
     import anndata
     counts = anndata.AnnData(
-        X = atlas.layers[key_counts] \
-            if key_counts is not None else atlas.X
+        X = atlas[:, atlas.var[hvg]].layers[key_counts].copy() \
+            if key_counts is not None else atlas[:, atlas.var[hvg]].X.copy()
     )
 
     counts.obs['batch'] = atlas.obs[key_batch].tolist() \
         if key_batch in atlas.obs.keys() else 'whole'
     counts.obs['annotation'] = atlas.obs[annotation].tolist()
-    counts.var_names = atlas.var_names.tolist()
-
+    counts.var_names = atlas.var_names[atlas.var[hvg] == True].tolist()
+    info(f'prepare count matrix of size {counts.n_obs} * {counts.n_vars}')
 
     # build scvi model
     import scvi
@@ -172,13 +179,14 @@ def construct_atlas(
         dropout_rate = scvi_dropout_rate,
         dispersion = scvi_dispersion,
         gene_likelihood = scvi_gene_likelihood,
-        latent_distribution = scvi_latent_distrib
+        latent_distribution = scvi_latent_distrib,
+        **scvi_kwargs
     )
 
     max_epochs_scvi = np.min([round((20000 / counts.n_obs) * 400), 400]) \
         if scvi_n_epoch is None else scvi_n_epoch
     info(f'will train {max_epochs_scvi} epochs.')
-    model.train(max_epochs = int(max_epochs_scvi), early_stopping = True)
+    model.train(max_epochs = int(max_epochs_scvi), **scvi_train_kwargs)
     scvi_pc = model.get_latent_representation()
     info(f'trained scvi model saved.')
     model.save(path)
@@ -190,6 +198,7 @@ def construct_atlas(
         'latent': scvi_n_latent,
         'scvi': scvi_key,
         'scanvi': scanvi_key,
+        'hvg': None
     }
 
     atlas.obsm[scvi_key] = scvi_pc
@@ -200,6 +209,7 @@ def construct_atlas(
         'latent': scvi_n_latent,
         'scvi': scvi_key,
         'scanvi': scanvi_key,
+        'hvg': hvg
     }
 
     
@@ -208,19 +218,21 @@ def construct_atlas(
     scanvi_model = scvi.model.SCANVI.from_scvi_model(
         model,
         unlabeled_category = scanvi_unlabel,
-        labels_key = 'annotation'
+        labels_key = 'annotation',
+        **scanvi_kwargs
     )
 
     scanvi_model.train(
         max_epochs = scanvi_max_epochs, 
-        n_samples_per_label = scanvi_samples_per_label
+        n_samples_per_label = scanvi_samples_per_label,
+        **scanvi_train_kwargs
     )
 
     atlas.obsm[scanvi_key] = scanvi_model.get_latent_representation()
     metadata.obsm[scanvi_key] = atlas.obsm[scanvi_key]
 
     info(f'trained scanvi model saved.')
-    scanvi_model.save(path, prefix = 'scanvi.')
+    scanvi_model.save(scanvipath)
     info(f'saving metadata of atlas as a light version.')
     metadata.write_h5ad(os.path.join(expm.directory, 'scvi', savename, 'metadata.h5ad'))
     warnings.filterwarnings('default')
@@ -260,8 +272,10 @@ def embed(
     
     counts_key = 'counts',
     batch_key = 'batch',
-    key_query_latent = 'scvi',
+    key_query_latent = 'scanvi',
+    scanvi_unlabel = 'unknown',
     scvi_epoch_reduction = 3,
+    predict_labels = 'annot'
 ):
 
     import scvi
@@ -275,7 +289,7 @@ def embed(
 
     query.obs_names = input.obs_names
     query.var_names = input.var_names
-    query.obs['annotation'] = 'unknown'
+    query.obs['annotation'] = scanvi_unlabel
     assert query.var.index.is_unique
     assert query.obs.index.is_unique
 
@@ -292,13 +306,13 @@ def embed(
 
     info(f'preparing query data ...')
     scvi_path = os.path.join(
-        atlas.directory, 'scvi', 
+        atlas.directory, 'scanvi', 
         atlas.subset if atlas.subset is not None else 'integrated'
     )
 
-    scvi.model.SCVI.prepare_query_anndata(query, scvi_path)
+    scvi.model.SCANVI.prepare_query_anndata(query, scvi_path)
     info(f'constructing query model for batch correction ...')
-    query_model = scvi.model.SCVI.load_query_data(query, scvi_path)
+    query_model = scvi.model.SCANVI.load_query_data(query, scvi_path)
 
     max_epochs_scvi = np.min([round((20000 / query.n_obs) * 400), 400]) // scvi_epoch_reduction
     info(f'will automatically train {max_epochs_scvi} epochs ...')
@@ -307,5 +321,9 @@ def embed(
     info(f'getting latent representations ...')
     query.obsm[key_query_latent] = query_model.get_latent_representation()
     input.obsm[key_query_latent] = query.obsm[key_query_latent]
+
+    if predict_labels:
+        query.obs[predict_labels] = query_model.predict()
+        input.obs[predict_labels] = query.obs[predict_labels]
     
     return query

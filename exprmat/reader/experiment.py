@@ -1,19 +1,3 @@
-'''
-Experiments may be carried out with different designs. There are two main types of experimental 
-designs to consider in terms of transcriptomic studies (or other assays that aim to measure
-sectional cellular states): (1) the one involves timing, for time sequence studies and lineage
-tracing studies, (2) and the one that do not involve timing, merely focusing on differences in 
-different experimental conditions, genetic background etc. Interestingly, lineage tracing-related
-studies can fail to capture both output of cell states, this may intervene the experiment at a 
-previous timepoint, and gather tracers at later timepoints, yielding only one time point observation.
-This type of study should be time-related study, but with only one known timepoint, leaving the
-history to be inferred only.
-
-Experiment finds and organize the data from a given metadata table, distinguishing between different
-samples, batches, modalities, and time series, and normalize them accordingly. Same sample from
-different modalities will be merged into a mudata here, but different samples are kept separately
-for sample-level QC is not performed yet.
-'''
 
 import scanpy as sc
 import anndata as ad
@@ -22,25 +6,38 @@ import pandas as pd
 import numpy as np
 import os
 
-from exprmat.reader.metadata import metadata, load_metadata
+import exprmat.reader.metadata
+from exprmat.reader.metadata import load_metadata
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import (
     read_mtx_rna, read_h5ad_rna, read_table_rna, read_h5_rna,
     parse_tcr_10x, attach_splice_reads_mtx, attach_splice_reads_loom
 )
 from exprmat.reader.matcher import attach_tcr
-from exprmat.ansi import warning, info, error, red, green, pprog
+from exprmat.ansi import warning, info, error, red, green, pprog, wrap, dtypestr, dtypemat
 from exprmat import config as cfg
 import exprmat.reader.static as st
 import exprmat as em
 
 
 class experiment:
+
+    mudata: mu.MuData
+    modalities: dict
+    metadata: exprmat.reader.metadata.metadata
+    subset: str | None
+    version: int
+    directory: str
     
     def __init__(
-        self, meta : metadata, 
+        self, meta : exprmat.reader.metadata, 
         eccentric = None, 
+
+        # internal parameters
         mudata = None, modalities = {}, 
+
+        # user parameters
+        save_simultaneously = True,
         dump = '.', subset = None,
         version = em.SPECIFICATION
     ):
@@ -136,7 +133,7 @@ class experiment:
                         src = i_loc, prefix = '', metadata = meta, sample = i_sample,
                         raw = False, default_taxa = i_taxa, eccentric = eccentric
                     )
-                    
+                
                 self.modalities['rna'][i_sample].var = \
                     st.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
                 
@@ -174,6 +171,12 @@ class experiment:
                     warnings.filterwarnings('default')
                 
                 else: pass
+
+                if save_simultaneously:
+                    os.makedirs(os.path.join(self.directory, 'rna'), exist_ok = True)
+                    self.modalities['rna'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'rna', i_sample + '.h5ad')
+                    )
 
 
             elif i_mod == 'rna.splicing': pass
@@ -229,6 +232,12 @@ class experiment:
                 self.modalities['rnasp-b'][i_sample].var = \
                     st.search_genes(self.modalities['rnasp-b'][i_sample].var_names.tolist())
                 
+                if save_simultaneously:
+                    os.makedirs(os.path.join(self.directory, 'rnasp-b'), exist_ok = True)
+                    self.modalities['rnasp-b'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'rnasp-b', i_sample + '.h5ad')
+                    )
+                
             elif i_mod == 'rnasp-s':
                 
                 if not 'rnasp-s' in self.modalities.keys(): self.modalities['rnasp-s'] = {}
@@ -247,6 +256,12 @@ class experiment:
                     self.modalities['rnasp-c'][i_sample] = cellseg
                     self.modalities['rnasp-c'][i_sample].var = \
                         st.search_genes(self.modalities['rnasp-c'][i_sample].var_names.tolist())
+                
+                if save_simultaneously:
+                    os.makedirs(os.path.join(self.directory, 'rnasp-s'), exist_ok = True)
+                    self.modalities['rnasp-s'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'rnasp-s', i_sample + '.h5ad')
+                    )
             
             elif i_mod == 'atac':
                 
@@ -269,6 +284,12 @@ class experiment:
                 # frags must not have the var table. otherwise error will occur when
                 # assigning bins to the vars.
                 self.modalities['atac'][i_sample] = frags
+
+                if save_simultaneously:
+                    os.makedirs(os.path.join(self.directory, 'atac'), exist_ok = True)
+                    self.modalities['atac'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'atac', i_sample + '.h5ad')
+                    )
 
             elif i_mod in ['rna-bulk', 'atac-bulk']:
                 
@@ -864,6 +885,25 @@ class experiment:
         else: self.mudata = None
 
 
+    def attach_metadata(self, dataframe, slot = 'rna', by = 'sample'):
+        self.check_merged(slot)
+        for irow in range(len(dataframe)):
+            row = dataframe.iloc[irow, :].copy()
+            mask = self[slot].obs[by] == row[by]
+
+            for column in dataframe.columns:
+                if column == by: continue
+                if column not in self[slot].obs.columns: self[slot].obs[column] = ''
+                else: self[slot].obs[column] = self[slot].obs[column].astype('str')
+
+                if row[column] == '@asis': pass
+                elif row[column].startswith('@'):
+                    self[slot].obs.loc[mask, column] = self[slot].obs.loc[mask, row[column][1:]]
+                else: self[slot].obs.loc[mask, column] = row[column]
+            
+        pass
+
+
     def do_for(self, modality, samples, func, parallel = None, **kwargs):
         
         results = {}
@@ -951,7 +991,14 @@ class experiment:
                 modality, list(set(self.all_samples(modality)) & set(run_on_samples)), 
                 func, **kwargs
             )
-        
+        elif isinstance(run_on_samples, str):
+            # match for samples, support regex also.
+            # will turn on regex mode if the expression starts with '^'.
+            alls = self.all_samples(modality)
+            import re
+            alls = [x for x in alls if re.match(run_on_samples, x) is not None]
+            # info(f'sample(s) [{", ".join(alls)}] selected by regex.')
+            return self.do_for(modality, alls, func, **kwargs)
         else:
             assert modality in self.mudata.mod.keys()
             return func(self.mudata[modality], 'integrated', **kwargs)
@@ -1420,7 +1467,11 @@ class experiment:
     # wrapper functions
 
     def run_rna_qc(self, run_on_samples = False, **kwargs):
-        self.do_for_rna(run_on_samples, st.rna_qc, **kwargs)
+        results = self.do_for_rna(run_on_samples, st.rna_qc, **kwargs)
+        if isinstance(results, dict):
+            for k in results.keys():
+                self.modalities['rna'][k] = results[k]
+        else: self.mudata.mod['rna'] = results
         
     def run_rna_filter(self, run_on_samples = False):
         results = self.do_for_rna(run_on_samples, st.rna_filter)
@@ -1603,6 +1654,45 @@ class experiment:
 
     def run_rna_principle_tree_pseudotime(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_principle_tree_pseudotime, **kwargs)
+
+    def run_rna_principle_tree_rename_milestones(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree_rename_milestones, **kwargs)
+
+    def run_rna_principle_tree_trace(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_principle_tree_trace, **kwargs)
+
+    def run_rna_metacell(self, run_on_samples = False, **kwargs):
+        mc = self.do_for_rna(run_on_samples, st.rna_metacell, **kwargs)
+        
+        if isinstance(mc, dict):
+
+            for k in mc.keys():
+                rows = self.metadata.dataframe[(
+                    (self.metadata.dataframe['sample'] == k) &
+                    (self.metadata.dataframe['modality'] == 'rna')
+                )]
+
+                assert len(rows) == 1
+                props = rows.iloc[0].copy()
+                props['sample'] = props['sample'] + '-metacell'
+                self.metadata.insert_row(props)
+                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
+                self.modalities['rna'][props['sample']] = mc[k]
+            
+        else:
+            rows = self.metadata.dataframe[(
+                (self.metadata.dataframe['modality'] == 'rna')
+            )]
+            
+            props = rows.iloc[0].copy()
+            for c in props.index: props[c] = 'autogen'
+            props['sample'] = kwargs.get('key_added', 'metacell')
+            props['modality'] = 'rna'
+            props['taxa'] = rows['taxa'][0] if len(rows['taxa'].unique()) == 1 else '?'
+            self.metadata.insert_row(props)
+            if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
+            self.modalities['rna'][props['sample']] = mc
+
     
     def run_atac_make_bins(self, run_on_samples = False, **kwargs):
         # bins can be made directly from bedgraph files if there is no alignment bam provided.
@@ -2026,6 +2116,9 @@ class experiment:
     def plot_rna_principle_tree_segments(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_principle_tree_segments, **kwargs)
 
+    def plot_rna_principle_tree_trace(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_principle_tree_trace, **kwargs)
+
     def plot_atac_qc(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.atac_plot_qc, **kwargs)
     
@@ -2161,10 +2254,12 @@ class experiment:
                 save_h5mu_handle_recreate(self.mudata, os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
 
         if not save_samples: return
+
+        info('saving individual samples. (pass `save_samples = False` to skip)')
         if self.modalities is not None:
             for key in self.modalities.keys():
                 os.makedirs(os.path.join(fdir, key), exist_ok = True)
-                for sample in self.modalities[key].keys():
+                for sample in pprog(list(self.modalities[key].keys()), desc = f'modality [{key}]'):
                     
                     # save individual samples
                     self.modalities[key][sample].write_h5ad(
@@ -2223,7 +2318,7 @@ class experiment:
         concat_dump = 'joint'
     ):
         
-        concat_meta = metadata(
+        concat_meta = exprmat.reader.metadata.metadata(
             locations = None, modality = None, default_taxa = None, 
             df = pd.concat(
                 (self.metadata.dataframe, expm.metadata.dataframe),
@@ -2345,93 +2440,130 @@ class experiment:
                 error(f'no modality named `{key}` (dataset not integrated).')
             
 
-    def __repr__(self):
+    def __str__(self):
 
-        from exprmat.ansi import green, cyan, red, yellow, common_length
+        from exprmat.ansi import green, cyan, red, yellow, common_length, annot
+        from io import StringIO as string_io
+        output = string_io()
 
-        def print_anndata(adata: ad.AnnData):
+        def print_anndata(adata: ad.AnnData, strio):
             print(yellow('annotated data'), 'of size', adata.n_obs, '×', adata.n_vars)
 
             import textwrap
             if adata.obs is not None and len(adata.obs) > 0:
-                print(green('    obs'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.obs.keys()), width = 90)
+                print(green('    obs'), ':', end = ' ', file = strio)
+
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypestr(adata.obs[x].dtype) + '>')
+                    for x in adata.obs.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
 
             if adata.var is not None and len(adata.var) > 0:
-                print(green('    var'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.var.keys()), width = 90)
+                print(green('    var'), ':', end = ' ', file = strio)
+                
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypestr(adata.var[x].dtype) + '>')
+                    for x in adata.var.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
             
             if adata.layers is not None and len(adata.layers) > 0:
-                print(green(' layers'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.layers.keys()), width = 90)
+                print(green(' layers'), ':', end = ' ', file = strio)
+                
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypestr(adata.layers[x].dtype) + '>')
+                    for x in adata.layers.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
             
             if adata.obsm is not None and len(adata.obsm) > 0:
-                print(green('   obsm'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.obsm.keys()), width = 90)
+                print(green('   obsm'), ':', end = ' ', file = strio)
+
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypemat(adata.obsm[x]) + '>')
+                    for x in adata.obsm.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
             
             if adata.varm is not None and len(adata.varm) > 0:
-                print(green('   varm'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.varm.keys()), width = 90)
+                print(green('   varm'), ':', end = ' ', file = strio)
+                
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypemat(adata.varm[x]) + '>')
+                    for x in adata.varm.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
 
             if adata.obsp is not None and len(adata.obsp) > 0:
-                print(green('   obsp'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.obsp.keys()), width = 90)
+                print(green('   obsp'), ':', end = ' ', file = strio)
+                
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypemat(adata.obsp[x]) + '>')
+                    for x in adata.obsp.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
 
             if adata.varp is not None and len(adata.varp) > 0:
-                print(green('   varp'), ':', end = ' ')
-                wrapped = textwrap.wrap(' '.join(adata.varp.keys()), width = 90)
+                print(green('   varp'), ':', end = ' ', file = strio)
+                
+                wrapped = wrap([
+                    x + ' ' + annot('<' + dtypemat(adata.varp[x]) + '>')
+                    for x in adata.varp.keys()
+                ], n = 90, sep = ' ')
+
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
 
             if adata.uns is not None and len(adata.uns) > 0:
-                print(green('    uns'), ':', end = ' ')
+                print(green('    uns'), ':', end = ' ', file = strio)
                 wrapped = textwrap.wrap(' '.join(adata.uns.keys()), width = 90)
                 for nline in range(len(wrapped)):
-                    if nline == 0: print(wrapped[nline])
-                    else: print(' ' * 9, wrapped[nline])
+                    if nline == 0: print(wrapped[nline], file = strio)
+                    else: print(' ' * 9, wrapped[nline], file = strio)
             
 
         if self.mudata is not None:
             if self.subset is None:
-                print(red('integrated dataset'), 'of size', self.mudata.n_obs, '×', self.mudata.n_vars)
-            else: print(red('subset'), self.subset, 'of size', self.mudata.n_obs, '×', self.mudata.n_vars)
-            print('contains modalities:', ', '.join([cyan(x) for x in list(self.mudata.mod.keys())]))
+                print(red('integrated dataset'), 'of size', self.mudata.n_obs, '×', self.mudata.n_vars, file = output)
+            else: print(red('subset'), self.subset, 'of size', self.mudata.n_obs, '×', self.mudata.n_vars, file = output)
+            print('contains modalities:', ', '.join([cyan(x) for x in list(self.mudata.mod.keys())]), file = output)
 
             for m in self.mudata.mod.keys():
-                print('\n', 'modality', cyan(f'[{m}]'))
-                print_anndata(self.mudata.mod[m])
+                print('\n', 'modality', cyan(f'[{m}]'), file = output)
+                print_anndata(self.mudata.mod[m], output)
             
-            print()
+            print('', file = output)
 
-        else: print(red('[!]'), 'dataset not integrated.')
+        else: print(red('[!]'), 'dataset not integrated.', file = output)
 
         if self.modalities is None or len(self.modalities) == 0:
-            print(red('[*]'), 'samples not loaded from disk.')
+            print(red('[*]'), 'samples not loaded from disk.', file = output)
         
         else:
-            print(red('[*]'), 'composed of samples:')
-            len_mod = 2
-            len_batch = 2
-            len_sample = 2
+            print(red('[*]'), 'composed of samples:', file = output)
+            len_mod = 5
+            len_batch = 5
+            len_sample = 5
             
             for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
                 self.metadata.dataframe['location'], 
@@ -2474,10 +2606,20 @@ class experiment:
                     'of size',
                     red('dataset not loaded') if not loaded else 
                     f'{green(str(self.modalities[i_mod][i_sample].n_obs))} × ' +
-                    f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}'
+                    f'{yellow(str(self.modalities[i_mod][i_sample].n_vars))}',
+                    file = output
                 )
 
-        return f'<exprmat.reader.experiment/{self.version if self.version else 1}> ({len(self.metadata.dataframe)} samples)'
+        return output.getvalue()
+
+
+    def __repr__(self):
+
+        return (
+            f'<exprmat.experiment> @ {hex(id(self))} (spec:{self.version if self.version else 1}) ' + 
+            f'from "{self.directory if self.directory else "."}" ' + (f'(subset [{self.subset}]) ' if self.subset else '') +
+            f'{"integrated" if self.mudata else "not integrated"}{", samples loaded" if len(self.modalities) > 0 else ""} ({len(self.metadata.dataframe)} samples)'
+        )
 
     pass
 

@@ -64,8 +64,9 @@ def embedding_atlas(
     cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
     legend = True, legend_loc = 'right margin', legend_col = 1, 
     frameon = 'small', fontsize = 10,
-    annotate = True, annotate_style = 'index', annot_size = 12,
+    annotate = True, annotate_style = 'index', annotate_fontsize = 12,
     annotate_foreground = 'black', annotate_stroke = 'white',
+    ticks = False,
     dpi = 100, sample_name = None
 ):
     res_factor = 1.5
@@ -192,7 +193,7 @@ def embedding_atlas(
                     x = mx, y = my, # fontproperties = 'bold',
                     text = str(legend_id + 1) if annotate_style == 'index' else legend_t, 
                     color = annotate_foreground,
-                    ha = 'center', va = 'center', size = annot_size
+                    ha = 'center', va = 'center', size = annotate_fontsize
                 )
                 
                 text.set_path_effects([
@@ -208,7 +209,8 @@ def embedding_atlas(
          (type(labels[0]) is float) or \
          (type(labels[0]) is np.float32) or \
          (type(labels[0]) is np.float64) or \
-         (type(labels[0]) is np.int):
+         (type(labels[0]) is np.int32) or \
+         (type(labels[0]) is np.int16):
         
         agg = cvs.points(df, 'x', 'y', ds.mean('label'))
         legend_tag = False
@@ -240,27 +242,13 @@ def embedding_atlas(
     def format_coord(x, y): return f"x = {x:.2f}, y = {y:.2f}"
     ax.format_coord = format_coord
 
-    # if legend_tag == True:
-    #     unique_labels = adata.obs[color].cat.categories
-    #     for label in unique_labels:
-    #         ax.scatter([], [], c = color_key[label], label = label)
-    #     
-    #     if legend_loc == 'right margin':
-    #         ax.legend(
-    #             frameon = False,
-    #             loc = 'center left',
-    #             bbox_to_anchor = (1, 0.5),
-    #             ncol = (1 if len(unique_labels) <= 14 else 2 if len(unique_labels) <= 30 else 3),
-    #             fontsize = fontsize,
-    #         )
-
     if frameon == False:
         ax.axis('off')
 
     elif frameon == 'small':
         ax.axis('on')
-        ax.set_xticks([])
-        ax.set_yticks([])
+        if not ticks: ax.set_xticks([])
+        if not ticks: ax.set_yticks([])
         ax.spines['left'].set_visible(True)
         ax.spines['bottom'].set_visible(True)
         ax.spines['top'].set_visible(False)
@@ -270,8 +258,8 @@ def embedding_atlas(
 
     else:
         ax.axis('on')
-        ax.set_xticks([])
-        ax.set_yticks([])
+        if not ticks: ax.set_xticks([])
+        if not ticks: ax.set_yticks([])
         ax.spines['left'].set_visible(True)
         ax.spines['bottom'].set_visible(True)
         ax.spines['top'].set_visible(True)
