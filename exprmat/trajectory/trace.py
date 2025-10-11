@@ -86,6 +86,7 @@ def binned_statistics(sorted_pstime, trajectory_key = 'ppt', statistic = 'mean',
 
     X = sorted_pstime.X.T
     if issparse(X): X = X.todense()
+    X = np.array(X)
     minx = sorted_pstime.obs[f'{trajectory_key}.pseudotime'].min()
     maxx = sorted_pstime.obs[f'{trajectory_key}.pseudotime'].max()
 

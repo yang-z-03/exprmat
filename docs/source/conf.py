@@ -148,5 +148,9 @@ nbsphinx_prolog = """
             padding-top: 0.5em !important;
             padding-right: 0.45em !important;
         }
+
+        .ansi-black-intense-fg {
+            color: #9a9a9a !important;
+        }
     </style>
 """

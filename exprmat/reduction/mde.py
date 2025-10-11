@@ -63,7 +63,10 @@ def mde(
 
 
 def mde_fit(
-    data, fit, fit_mask, device = None, **kwargs
+    data, fit, fit_mask, device = None, 
+    eps: float = 0.00001, max_iter: int = 300, memory_size: int = 10,
+    verbose = False,
+    **kwargs
 ):
     
     try: import pymde
@@ -90,8 +93,12 @@ def mde_fit(
             torch.nonzero(torch.tensor(fit_mask)).squeeze(), 
             torch.tensor(fitting, dtype = torch.float)
         ),
-        verbose = True
-    ).embed(verbose = True)
+        verbose = verbose
+    ).embed(
+        verbose = verbose,
+        eps = eps, max_iter = max_iter, 
+        memory_size = memory_size
+    )
 
     if isinstance(emb, torch.Tensor):
         emb = emb.cpu().numpy()

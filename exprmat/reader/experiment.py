@@ -41,7 +41,7 @@ class experiment:
         dump = '.', subset = None,
         version = em.SPECIFICATION
     ):
-        # TODO: we support rna only at present.
+        
         table = meta.dataframe.to_dict(orient = 'list')
         self.mudata = mudata
         self.modalities = modalities
@@ -1694,6 +1694,19 @@ class experiment:
             self.modalities['rna'][props['sample']] = mc
 
     
+    def run_rna_construct_atlas(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(
+            run_on_samples, st.rna_construct_atlas, 
+            expm_dir = self.directory,
+            expm_subset = self.subset,
+            **kwargs
+        )
+
+    
+    def run_rna_project(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_project, **kwargs)
+
+    
     def run_atac_make_bins(self, run_on_samples = False, **kwargs):
         # bins can be made directly from bedgraph files if there is no alignment bam provided.
         # thus these samples can be used for clustering.
@@ -1997,6 +2010,9 @@ class experiment:
     
     def plot_rna_kde(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_kde, **kwargs)
+    
+    def plot_rna_projection(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_projection, **kwargs)
     
     def plot_rna_proportion(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_proportion, **kwargs)

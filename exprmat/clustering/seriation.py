@@ -33,7 +33,7 @@ def seriation(Z, N, cur_index):
 
 def serial_matrix(dist, method = "ward", seed = 42):
     '''
-    Compute_serial_matrix transforms a distance matrix into a sorted distance matrix 
+    Transforms a distance matrix into a sorted distance matrix 
     according to the order implied by the hierarchical tree (dendrogram).
 
     Parameters
@@ -55,7 +55,7 @@ def serial_matrix(dist, method = "ward", seed = 42):
 
     N = len(dist)
     flat_dist_mat = squareform(dist)
-    res_linkage = linkage(flat_dist_mat, method = method,preserve_input = True)
+    res_linkage = linkage(flat_dist_mat, method = method, preserve_input = True)
     res_order = seriation(res_linkage, N, N + N-2)
     seriated_dist = np.zeros((N,N))
     a,b = np.triu_indices(N, k = 1)

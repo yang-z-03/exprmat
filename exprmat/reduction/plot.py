@@ -301,7 +301,7 @@ def embedding(
     legend = True,
 
     # contour plotting option.
-    contour_plot = True,
+    contour_plot = False,
     contour_fill = False,
     contour_mask = None,
     contour_mask_values = [],
@@ -426,22 +426,6 @@ def embedding(
             hue_order = hue_order if default_palette is not None else None
         )
 
-        if contour_plot:
-
-            cx = atlas_data['x']
-            cy = atlas_data['y']
-            if contour_mask is not None:
-                cx = [y for x, y in zip(adata.obs[contour_mask], cx) if x in contour_mask_values]
-                cy = [y for x, y in zip(adata.obs[contour_mask], cy) if x in contour_mask_values]
-
-            sb.kdeplot(
-                x = cx, y = cy, warn_singular = False,
-                linewidths = contour_linewidth, bw_adjust = contour_bw, bw_method = 'scott',
-                fill = contour_fill, ax = axes, 
-                palette = None, color = contour_default_color, alpha = contour_alpha,
-                levels = contour_levels, legend = False
-            )
-
         if legend:
             assert len(adata.uns[f'{color}.colors']) == len(hue_order)
             dummy_objects = []
@@ -491,6 +475,7 @@ def embedding(
 
                 axes.add_artist(text)
                 pass
+    
     
     elif type(labels[0]) is bool:
 
@@ -546,7 +531,24 @@ def embedding(
     
     else:
         warning('color label must be categorical (string) or numerical.')
-        return None
+        return 
+
+
+    if contour_plot:
+
+        cx = atlas_data['x']
+        cy = atlas_data['y']
+        if contour_mask is not None:
+            cx = [y for x, y in zip(adata.obs[contour_mask], cx) if x in contour_mask_values]
+            cy = [y for x, y in zip(adata.obs[contour_mask], cy) if x in contour_mask_values]
+
+        sb.kdeplot(
+            x = cx, y = cy, warn_singular = False,
+            linewidths = contour_linewidth, bw_adjust = contour_bw, bw_method = 'scott',
+            fill = contour_fill, ax = axes, 
+            palette = None, color = contour_default_color, alpha = contour_alpha,
+            levels = contour_levels, legend = False
+        )
     
     def format_coord(x, y): return f"x = {x:.2f}, y = {y:.2f}"
     axes.format_coord = format_coord

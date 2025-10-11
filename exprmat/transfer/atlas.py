@@ -8,7 +8,9 @@ from exprmat.reader.experiment import experiment
 
 
 def construct_atlas(
-    expm: experiment, 
+    adata,
+    expm_dir,
+    expm_subset,
     key_counts = 'counts',
     key_batch = 'batch',
     hvg = 'hvg',
@@ -119,14 +121,14 @@ def construct_atlas(
     warnings.filterwarnings('ignore')
     torch.set_float32_matmul_precision('high')
 
-    atlas = expm.mudata['rna']
-    savename = expm.subset if expm.subset is not None else 'integrated'
-    path = os.path.join(expm.directory, 'scvi', savename)
-    scanvipath = os.path.join(expm.directory, 'scanvi', savename)
+    atlas = adata
+    savename = expm_subset if expm_subset is not None else 'integrated'
+    path = os.path.join(expm_dir, 'scvi', savename)
+    scanvipath = os.path.join(expm_dir, 'scanvi', savename)
     
     if os.path.exists(path):
         error('the destination path `scvi/{savename}` is already occupied.')
-    else: os.makedirs(os.path.join(expm.directory, 'scvi'), exist_ok = True)
+    else: os.makedirs(os.path.join(expm_dir, 'scvi'), exist_ok = True)
 
 
     # extract count matrix.
@@ -234,32 +236,30 @@ def construct_atlas(
     info(f'trained scanvi model saved.')
     scanvi_model.save(scanvipath)
     info(f'saving metadata of atlas as a light version.')
-    metadata.write_h5ad(os.path.join(expm.directory, 'scvi', savename, 'metadata.h5ad'))
+    metadata.write_h5ad(os.path.join(expm_dir, 'scvi', savename, 'metadata.h5ad'))
     warnings.filterwarnings('default')
 
 
-def is_atlas(expm: experiment):
+def is_atlas(adata):
 
-    expm.check_merged('rna')
-
-    if 'atlas' not in expm.mudata['rna'].uns.keys():
+    if 'atlas' not in adata.uns.keys():
         warning(f'do not contain an `atlas` key in uns slot. build atlas first.')
         return False
     
-    atlas = expm.mudata['rna'].uns['atlas']
-    if atlas['batch'] not in expm.mudata['rna'].obs.keys():
+    atlas = adata.uns['atlas']
+    if atlas['batch'] not in adata.obs.keys():
         warning(f'`{atlas["batch"]}` do not exist.')
         return False
     
-    if atlas['annotation'] not in expm.mudata['rna'].obs.keys():
+    if atlas['annotation'] not in adata.obs.keys():
         warning(f'`{atlas["annotation"]}` do not exist.')
         return False
 
-    if atlas['scvi'] not in expm.mudata['rna'].obsm.keys():
+    if atlas['scvi'] not in adata.obsm.keys():
         warning(f'`{atlas["scvi"]}` do not exist.')
         return False
 
-    if atlas['scanvi'] not in expm.mudata['rna'].obsm.keys():
+    if atlas['scanvi'] not in adata.obsm.keys():
         warning(f'`{atlas["scanvi"]}` do not exist.')
         return False
 
@@ -268,7 +268,7 @@ def is_atlas(expm: experiment):
 
 def embed(
     atlas: experiment, 
-    expm: experiment,
+    expm,
     
     counts_key = 'counts',
     batch_key = 'batch',
@@ -281,7 +281,7 @@ def embed(
     import scvi
     import anndata
 
-    input = expm.mudata['rna']
+    input = expm
     query = anndata.AnnData(
         X = input.X.copy() if counts_key is None 
         else input.layers[counts_key].copy()
@@ -327,3 +327,74 @@ def embed(
         input.obs[predict_labels] = query.obs[predict_labels]
     
     return query
+
+
+def project(
+    atlas: experiment, 
+    expm,
+    
+    atlas_modality = 'rna',
+    atlas_embedding = 'umap',
+    counts_key = 'counts',
+    batch_key = 'batch',
+    key_query_latent = 'scanvi',
+    scanvi_unlabel = 'unknown',
+    scvi_epoch_reduction = 3,
+    predict_labels = 'annot',
+    key_added = 'projection',
+
+    re_embed = False,
+    **kwargs
+):
+    
+    data_meta = atlas[atlas_modality].obs[[
+        atlas[atlas_modality].uns['atlas']['batch'],
+        atlas[atlas_modality].uns['atlas']['annotation']
+    ]].copy()
+    data_meta.columns = ['batch', 'annotation']
+
+    embed(
+        atlas = atlas,
+        expm = expm,
+        counts_key = counts_key,
+        batch_key = batch_key,
+        key_query_latent = key_query_latent,
+        scanvi_unlabel = scanvi_unlabel,
+        scvi_epoch_reduction = scvi_epoch_reduction,
+        predict_labels = predict_labels
+    )
+
+    # copy metadata from atlas to expm.
+    
+    atlas.check_merged(atlas_modality)
+    atlas = atlas[atlas_modality]
+    expm = expm
+
+    data = atlas.obsm[atlas_embedding]
+
+    data_meta['x'] = data[:, 0]
+    data_meta['y'] = data[:, 1]
+
+    import pandas as pd
+    if isinstance(data, pd.DataFrame): data = data.values
+    if not isinstance(data, np.ndarray): data = np.array(data)
+    assert data.shape[1] == 2
+
+    n_cells = expm.n_obs
+    n_ref = atlas.n_obs
+
+    scanvi_atlas = atlas.obsm[atlas.uns['atlas']['scanvi']]
+    scanvi_expm = expm.obsm[key_query_latent]
+
+    merged_latent = np.concat([scanvi_atlas, scanvi_expm], axis = 0)
+    merged_embed = np.concat([data, np.zeros(shape = (n_cells, 2))], axis = 0)
+    mask = np.array([True] * n_ref + [False] * n_cells)
+
+    from exprmat.reduction.mde import mde_fit, mde
+    if not re_embed: emb = mde_fit(merged_latent, merged_embed, mask, **kwargs)
+    else: emb = mde(merged_latent, **kwargs)
+
+    expm.obsm[key_added] = emb[~mask, :]
+    data_meta['xf'] = emb[mask, 0]
+    data_meta['yf'] = emb[mask, 1]
+    expm.uns[key_added] = data_meta

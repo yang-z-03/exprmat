@@ -73,6 +73,7 @@ def cnmf_distance_usages(
         elif annotations in adata.obsm.keys(): 
             annotations = adata[subset, :][order, :].obsm[annotations]
 
+    print(indices)
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
         cmap = cmap, figsize = figsize, dpi = dpi, show_indices = show_indices,
@@ -103,6 +104,7 @@ def cnmf_distance_modules(
         elif annotations in adata.varm.keys(): 
             annotations = adata[:, subset][:, order].varm[annotations]
 
+    print(indices)
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
         cmap = cmap, figsize = figsize, dpi = dpi, show_indices = show_indices, legend_cols = legend_cols

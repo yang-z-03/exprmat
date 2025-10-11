@@ -1015,6 +1015,22 @@ def rna_metacell(
     return metacell[0]
 
 
+def rna_construct_atlas(
+    adata, sample_names, expm_dir, expm_subset, **kwargs
+):
+    from exprmat.transfer.atlas import construct_atlas
+    if sample_names != 'integrated':
+        expm_dir = os.path.join(expm_dir, 'rna')
+        expm_subset = sample_names
+    construct_atlas(adata, expm_dir, expm_subset, **kwargs)
+
+
+def rna_project(
+    adata, sample_names, **kwargs
+):
+    from exprmat.transfer.atlas import project
+    project(expm = adata, **kwargs)
+
 def atac_filter_cells(
     adata, sample_name, min_counts = 5000, max_counts = 100000, 
     min_tsse = 10, max_tsse = 100
@@ -1710,6 +1726,54 @@ def rna_plot_kde(
     fig.set_figwidth(figsize[0])
     fig.set_figheight(figsize[1])
     fig.tight_layout()
+    return fig
+
+
+def rna_plot_projection(
+    # query projection
+    adata, sample_name, color,
+    figsize = (3, 3), dpi = 100, projection_key = 'projection', 
+
+    # atlas background
+    background = 'annotation',
+    annotate = True, annotate_fontsize = 9, 
+    **kwargs
+):
+    from exprmat.reduction.plot import embedding
+    import matplotlib.pyplot as plt
+    import warnings
+    warnings.filterwarnings('ignore')
+
+    fig, axes = plt.subplots(1, 1, dpi = dpi, figsize = figsize)
+
+    from scipy.sparse import csr_matrix
+    tab = adata.uns[projection_key]
+    nbg = len(tab)
+    bg = ad.AnnData(csr_matrix((nbg, 2)))
+    bg.obs['annotation'] = tab['annotation'].tolist()
+    bg.obs['batch'] = tab['batch'].tolist()
+    bg.obs['annotation'] = bg.obs['annotation'].astype('category')
+    bg.obs['batch'] = bg.obs['batch'].astype('category')
+    bg.obsm['basis'] = tab[['xf', 'yf']].copy().values
+
+    embedding(
+        bg, basis = 'basis', color = background,
+        default_color = '#eeeeee', ptsize = 8,
+        annotate = annotate, annotate_style = 'text',
+        legend = False, contour_plot = False,
+        annotate_fontsize = annotate_fontsize,
+        annotate_only = None,
+        cmap = None, add_outline = True, outline_color = '#777777',
+        ax = axes, dpi = dpi,
+        sample_name = sample_name
+    )
+    
+    embedding(
+        adata, basis = projection_key, color = color,
+        ax = axes, dpi = dpi, 
+        sample_name = sample_name, **kwargs
+    )
+
     return fig
 
 
