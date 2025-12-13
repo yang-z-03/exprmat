@@ -36,7 +36,9 @@ def construct_atlas(
     scvi_kwargs = {},
     scanvi_kwargs = {},
     scanvi_train_kwargs = {},
-    scvi_train_kwargs = {}
+    scvi_train_kwargs = {},
+
+    use_model = None
 ):
     """
     构建单细胞数据集的参考图谱（atlas）
@@ -119,7 +121,9 @@ def construct_atlas(
     
     import warnings
     warnings.filterwarnings('ignore')
-    torch.set_float32_matmul_precision('high')
+    from exprmat.utils import supports_tensorcore
+    if supports_tensorcore():
+        torch.set_float32_matmul_precision('high')
 
     atlas = adata
     savename = expm_subset if expm_subset is not None else 'integrated'
@@ -144,55 +148,67 @@ def construct_atlas(
     counts.var_names = atlas.var_names[atlas.var[hvg] == True].tolist()
     info(f'prepare count matrix of size {counts.n_obs} * {counts.n_vars}')
 
+
     # build scvi model
     import scvi
-    
-    # we will remove all data with < batch_cell_filter cell detection.
-    mapping = {}
-    names = counts.obs['batch'].value_counts().index.tolist()
-    values = counts.obs['batch'].value_counts().tolist()
-    n_outlier_sample = 0
-    for n, v in zip(names, values):
-        if v > batch_cell_filter: mapping[n] = n
-        else: 
-            mapping[n] = 'outliers'
-            n_outlier_sample += 1
-    
-    warning(f'{n_outlier_sample} samples is removed due to small sample size.')
-    batch = counts.obs['batch'].tolist()
-    for i in range(len(batch)):
-        batch[i] = mapping[batch[i]]
-    counts.obs['batch'] = batch
-
-    # extract metadata file.
     import scipy.sparse as sparse
+    
+    # extract metadata file.
     n_cells, n_genes = counts.X.shape
     metadata = anndata.AnnData(
         X = sparse.csr_matrix((n_cells, n_genes), dtype = np.float32),
         obs = counts.obs, var = counts.var
     )
+    
+    if use_model:
+        model = scvi.model.SCVI.load(os.path.join(expm_dir, 'scvi', use_model), adata = counts)
+        scvi_pc = adata.obsm[use_model]
+        scvi_n_latent = adata.uns[use_model]['n_latent']
+        if adata.uns[use_model]['batch_key'] != key_batch:
+            prev_batch = adata.uns[use_model]['batch_key']
+            error(f'failed to re-use trained scvi model since it was trained on batch `{prev_batch}`.')
+        model.save(path)
 
-    scvi.model.SCVI.setup_anndata(counts, batch_key = 'batch')
-    model = scvi.model.SCVI(
-        counts, 
-        n_hidden = scvi_n_hidden, 
-        n_latent = scvi_n_latent, 
-        n_layers = scvi_n_layers,
-        dropout_rate = scvi_dropout_rate,
-        dispersion = scvi_dispersion,
-        gene_likelihood = scvi_gene_likelihood,
-        latent_distribution = scvi_latent_distrib,
-        **scvi_kwargs
-    )
+    else:
+        # we will remove all data with < batch_cell_filter cell detection.
+        mapping = {}
+        names = counts.obs['batch'].value_counts().index.tolist()
+        values = counts.obs['batch'].value_counts().tolist()
+        n_outlier_sample = 0
+        for n, v in zip(names, values):
+            if v > batch_cell_filter: mapping[n] = n
+            else: 
+                mapping[n] = 'outliers'
+                n_outlier_sample += 1
 
-    max_epochs_scvi = np.min([round((20000 / counts.n_obs) * 400), 400]) \
-        if scvi_n_epoch is None else scvi_n_epoch
-    info(f'will train {max_epochs_scvi} epochs.')
-    model.train(max_epochs = int(max_epochs_scvi), **scvi_train_kwargs)
-    scvi_pc = model.get_latent_representation()
-    info(f'trained scvi model saved.')
-    model.save(path)
+        warning(f'{n_outlier_sample} samples is removed due to small sample size.')
+        batch = counts.obs['batch'].tolist()
+        for i in range(len(batch)):
+            batch[i] = mapping[batch[i]]
+        counts.obs['batch'] = batch
+        
+        scvi.model.SCVI.setup_anndata(counts, batch_key = 'batch')
+        model = scvi.model.SCVI(
+            counts, 
+            n_hidden = scvi_n_hidden, 
+            n_latent = scvi_n_latent, 
+            n_layers = scvi_n_layers,
+            dropout_rate = scvi_dropout_rate,
+            dispersion = scvi_dispersion,
+            gene_likelihood = scvi_gene_likelihood,
+            latent_distribution = scvi_latent_distrib,
+            **scvi_kwargs
+        )
 
+        max_epochs_scvi = np.min([round((20000 / counts.n_obs) * 400), 400]) \
+            if scvi_n_epoch is None else scvi_n_epoch
+        info(f'will train {max_epochs_scvi} epochs.')
+        model.train(max_epochs = int(max_epochs_scvi), **scvi_train_kwargs)
+        scvi_pc = model.get_latent_representation()
+        info(f'trained scvi model saved.')
+        model.save(path)
+
+    
     metadata.obsm[scvi_key] = scvi_pc
     metadata.uns['atlas'] = {
         'batch': 'batch',
@@ -275,8 +291,14 @@ def embed(
     key_query_latent = 'scanvi',
     scanvi_unlabel = 'unknown',
     scvi_epoch_reduction = 3,
-    predict_labels = 'annot'
+    predict_labels = 'annot',
+
+    use_scanvi = True
 ):
+    
+    from exprmat.utils import supports_tensorcore
+    if supports_tensorcore():
+        torch.set_float32_matmul_precision('high')
 
     import scvi
     import anndata
@@ -304,27 +326,52 @@ def embed(
         query.obs['batch'] = 'whole'
         
 
-    info(f'preparing query data ...')
-    scvi_path = os.path.join(
-        atlas.directory, 'scanvi', 
-        atlas.subset if atlas.subset is not None else 'integrated'
-    )
+    if use_scanvi:
+        info(f'preparing query data ...')
+        scvi_path = os.path.join(
+            atlas.directory, 'scanvi', 
+            atlas.subset if atlas.subset is not None else 'integrated'
+        )
 
-    scvi.model.SCANVI.prepare_query_anndata(query, scvi_path)
-    info(f'constructing query model for batch correction ...')
-    query_model = scvi.model.SCANVI.load_query_data(query, scvi_path)
+        scvi.model.SCANVI.prepare_query_anndata(query, scvi_path)
+        info(f'constructing query model for batch correction ...')
+        query_model = scvi.model.SCANVI.load_query_data(query, scvi_path)
 
-    max_epochs_scvi = np.min([round((20000 / query.n_obs) * 400), 400]) // scvi_epoch_reduction
-    info(f'will automatically train {max_epochs_scvi} epochs ...')
-    query_model.train(max_epochs = int(max_epochs_scvi), plan_kwargs = { 'weight_decay': 0.0 })
+        max_epochs_scvi = np.min([round((20000 / query.n_obs) * 400), 400]) // scvi_epoch_reduction
+        info(f'will automatically train {max_epochs_scvi} epochs ...')
+        query_model.train(max_epochs = int(max_epochs_scvi), plan_kwargs = { 'weight_decay': 0.0 })
 
-    info(f'getting latent representations ...')
-    query.obsm[key_query_latent] = query_model.get_latent_representation()
-    input.obsm[key_query_latent] = query.obsm[key_query_latent]
+        info(f'getting latent representations ...')
+        query.obsm[key_query_latent] = query_model.get_latent_representation()
+        input.obsm[key_query_latent] = query.obsm[key_query_latent]
 
-    if predict_labels:
-        query.obs[predict_labels] = query_model.predict()
-        input.obs[predict_labels] = query.obs[predict_labels]
+        if predict_labels:
+            query.obs[predict_labels] = query_model.predict()
+            input.obs[predict_labels] = query.obs[predict_labels]
+            input.obs[predict_labels] = input.obs[predict_labels].astype('category')
+            query.obs[predict_labels] = query.obs[predict_labels].astype('category')
+        
+    else:
+        info(f'preparing query data ...')
+        scvi_path = os.path.join(
+            atlas.directory, 'scvi', 
+            atlas.subset if atlas.subset is not None else 'integrated'
+        )
+
+        scvi.model.SCVI.prepare_query_anndata(query, scvi_path)
+        info(f'constructing query model for batch correction ...')
+        query_model = scvi.model.SCVI.load_query_data(query, scvi_path)
+
+        max_epochs_scvi = np.min([round((20000 / query.n_obs) * 400), 400]) // scvi_epoch_reduction
+        info(f'will automatically train {max_epochs_scvi} epochs ...')
+        query_model.train(max_epochs = int(max_epochs_scvi), plan_kwargs = { 'weight_decay': 0.0 })
+
+        info(f'getting latent representations ...')
+        query.obsm[key_query_latent] = query_model.get_latent_representation()
+        input.obsm[key_query_latent] = query.obsm[key_query_latent]
+
+        if predict_labels:
+            warning('`predict_labels` will be ignored when setting `use_scanvi` to false.')
     
     return query
 
@@ -342,8 +389,10 @@ def project(
     scvi_epoch_reduction = 3,
     predict_labels = 'annot',
     key_added = 'projection',
+    embed_decay = 30,
 
     re_embed = False,
+    use_scanvi = True,
     **kwargs
 ):
     
@@ -361,7 +410,8 @@ def project(
         key_query_latent = key_query_latent,
         scanvi_unlabel = scanvi_unlabel,
         scvi_epoch_reduction = scvi_epoch_reduction,
-        predict_labels = predict_labels
+        predict_labels = predict_labels,
+        use_scanvi = use_scanvi
     )
 
     # copy metadata from atlas to expm.
@@ -380,21 +430,48 @@ def project(
     if not isinstance(data, np.ndarray): data = np.array(data)
     assert data.shape[1] == 2
 
-    n_cells = expm.n_obs
-    n_ref = atlas.n_obs
+    key_atlas = 'scanvi' if use_scanvi else 'scvi'
 
-    scanvi_atlas = atlas.obsm[atlas.uns['atlas']['scanvi']]
-    scanvi_expm = expm.obsm[key_query_latent]
+    if not re_embed:
+        n_cells = expm.n_obs
+        n_ref = atlas.n_obs // embed_decay
+        if atlas.n_obs < min(100, embed_decay):
+            warning('the atlas subsample to embed is too small (<100 or embed_decay)')
+            warning('you should set embed_decay to 1 when embedding to a very small atlas.')
 
-    merged_latent = np.concat([scanvi_atlas, scanvi_expm], axis = 0)
-    merged_embed = np.concat([data, np.zeros(shape = (n_cells, 2))], axis = 0)
-    mask = np.array([True] * n_ref + [False] * n_cells)
+        scanvi_atlas = atlas.obsm[atlas.uns['atlas'][key_atlas]]
+        scanvi_expm = expm.obsm[key_query_latent]
 
-    from exprmat.reduction.mde import mde_fit, mde
-    if not re_embed: emb = mde_fit(merged_latent, merged_embed, mask, **kwargs)
-    else: emb = mde(merged_latent, **kwargs)
+        if embed_decay != 1:
+            embed_mask = np.random.choice([x for x in range(atlas.n_obs)], n_ref, False)
+            scanvi_atlas = scanvi_atlas[embed_mask, :].copy()
+            data = data[embed_mask, :].copy()
 
-    expm.obsm[key_added] = emb[~mask, :]
-    data_meta['xf'] = emb[mask, 0]
-    data_meta['yf'] = emb[mask, 1]
-    expm.uns[key_added] = data_meta
+        merged_latent = np.concat([scanvi_atlas, scanvi_expm], axis = 0)
+        merged_embed = np.concat([data, np.zeros(shape = (n_cells, 2))], axis = 0)
+        mask = np.array([True] * n_ref + [False] * n_cells)
+
+        from exprmat.reduction.mde import mde_fit, mde
+        emb = mde_fit(merged_latent, merged_embed, mask, **kwargs)
+
+        expm.obsm[key_added] = emb[~mask, :]
+        expm.uns[key_added] = data_meta
+    
+    else:
+        n_cells = expm.n_obs
+        n_ref = atlas.n_obs
+
+        scanvi_atlas = atlas.obsm[atlas.uns['atlas'][key_atlas]]
+        scanvi_expm = expm.obsm[key_query_latent]
+
+        merged_latent = np.concat([scanvi_atlas, scanvi_expm], axis = 0)
+        merged_embed = np.concat([data, np.zeros(shape = (n_cells, 2))], axis = 0)
+        mask = np.array([True] * n_ref + [False] * n_cells)
+
+        from exprmat.reduction.mde import mde_fit, mde
+        emb = mde(merged_latent, **kwargs)
+
+        expm.obsm[key_added] = emb[~mask, :]
+        data_meta['x'] = emb[mask, 0]
+        data_meta['y'] = emb[mask, 1]
+        expm.uns[key_added] = data_meta

@@ -352,8 +352,9 @@ def lr_dotplot(
     inverse_colour: bool = False,
     inverse_size: bool = False,
     cmap: str = V.cmap,
-    size_range: tuple = (2, 9),
+    size_ratio: float = 1.0,
     figure_size: tuple = (8, 6),
+    paired = False,
     ax = None
 ):
     
@@ -405,8 +406,8 @@ def lr_dotplot(
     ylabs = y[::-1]
     df = { 'x': [], 'y': [], 's': [], 'c': [] }
 
-    for sx in s:
-        for xx in x:
+    if paired:
+        for sx, xx in zip(s, x):
             xlabs += [f'{sx} > {xx}']
             for yx in y:
                 mask = (
@@ -414,12 +415,29 @@ def lr_dotplot(
                     (liana_res['target'] == xx) & 
                     (liana_res['interaction'] == yx)
                 )
-
+    
                 if mask.sum() == 1:
                     df['x'].append(len(xlabs) - 1)
                     df['y'].append(ylabs.index(yx))
-                    df['s'].append(liana_res.loc[mask, size].iloc[0] * 32)
+                    df['s'].append(liana_res.loc[mask, size].iloc[0] * 32 * size_ratio)
                     df['c'].append(liana_res.loc[mask, colour].iloc[0])
+
+    else:
+        for sx in s:
+            for xx in x:
+                xlabs += [f'{sx} > {xx}']
+                for yx in y:
+                    mask = (
+                        (liana_res['source'] == sx) & 
+                        (liana_res['target'] == xx) & 
+                        (liana_res['interaction'] == yx)
+                    )
+
+                    if mask.sum() == 1:
+                        df['x'].append(len(xlabs) - 1)
+                        df['y'].append(ylabs.index(yx))
+                        df['s'].append(liana_res.loc[mask, size].iloc[0] * 32 * size_ratio)
+                        df['c'].append(liana_res.loc[mask, colour].iloc[0])
 
 
 

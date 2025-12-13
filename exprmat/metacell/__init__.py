@@ -1,9 +1,6 @@
 
-import os
 import torch
 import random
-import argparse
-import matplotlib
 import numpy as np
 import scanpy as sc
 import seaborn as sns

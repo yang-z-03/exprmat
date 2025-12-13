@@ -65,7 +65,7 @@ def cnmf_distance_usages(
     pdistc = pdist(data, metric = metrics)
 
     from exprmat.clustering.seriation import serial_matrix, squareform
-    serial, order, _ = serial_matrix(squareform(pdistc), method = method)
+    serial, order, _ = serial_matrix(pdistc, method = method)
     indices = adata.obs.iloc[subset, :].iloc[order, :].index.tolist()
     if annotations:
         if annotations in adata.obs.columns: 
@@ -73,7 +73,6 @@ def cnmf_distance_usages(
         elif annotations in adata.obsm.keys(): 
             annotations = adata[subset, :][order, :].obsm[annotations]
 
-    print(indices)
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
         cmap = cmap, figsize = figsize, dpi = dpi, show_indices = show_indices,
@@ -88,7 +87,11 @@ def cnmf_distance_modules(
 ):
     
     import numpy as np
+    hvg = adata.uns[f'{nmf_slot}.args']['hvg']
+    hvg = adata.var[hvg]
+    adata = adata[:, hvg]
     df = adata.varm[f'{nmf_slot}.{k}']
+
     nrow = df.shape[0]
     subset = np.random.choice(range(nrow), int(nrow * downsample), replace = False)
     from exprmat.clustering.seriation import pdist
@@ -96,7 +99,7 @@ def cnmf_distance_modules(
     pdistc = pdist(data, metric = metrics)
 
     from exprmat.clustering.seriation import serial_matrix, squareform
-    serial, order, _ = serial_matrix(squareform(pdistc), method = method)
+    serial, order, _ = serial_matrix((pdistc), method = method)
     indices = adata.var.iloc[subset, :].iloc[order, :].index.tolist()
     if annotations: 
         if annotations in adata.var.columns: 
@@ -104,7 +107,6 @@ def cnmf_distance_modules(
         elif annotations in adata.varm.keys(): 
             annotations = adata[:, subset][:, order].varm[annotations]
 
-    print(indices)
     return matrix_plot(
         serial, labels = indices, annotations = annotations, cmap_annotations = cmap_annotations, 
         cmap = cmap, figsize = figsize, dpi = dpi, show_indices = show_indices, legend_cols = legend_cols

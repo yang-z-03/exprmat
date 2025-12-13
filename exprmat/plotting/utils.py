@@ -55,12 +55,21 @@ def linregress(
     y1, y2 = axis.get_ylim()
     
     if show_stats:
-        axis.text(
-            s = r + '\n' + p, va = 'bottom', ha = 'right', 
-            x = x1 + 0.95 * (x2 - x1), 
-            y = y1 + 0.05 * (y2 - y1),
-            linespacing = 1.5
-        )
+        if res.rvalue > 0:
+            axis.text(
+                s = r + '\n' + p, va = 'bottom', ha = 'right', 
+                x = x1 + 0.95 * (x2 - x1), 
+                y = y1 + 0.05 * (y2 - y1),
+                linespacing = 1.5
+            )
+        
+        else:
+            axis.text(
+                s = r + '\n' + p, va = 'bottom', ha = 'left', 
+                x = x1 + 0.05 * (x2 - x1), 
+                y = y1 + 0.05 * (y2 - y1),
+                linespacing = 1.5
+            )
 
     return fig
 

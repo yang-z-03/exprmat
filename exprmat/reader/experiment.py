@@ -11,6 +11,7 @@ from exprmat.reader.metadata import load_metadata
 from exprmat.data.finders import get_genome
 from exprmat.reader.matcher import (
     read_mtx_rna, read_h5ad_rna, read_table_rna, read_h5_rna,
+    read_h5_cite, read_mtx_cite,
     parse_tcr_10x, attach_splice_reads_mtx, attach_splice_reads_loom
 )
 from exprmat.reader.matcher import attach_tcr
@@ -42,7 +43,7 @@ class experiment:
         version = em.SPECIFICATION
     ):
         
-        table = meta.dataframe.to_dict(orient = 'list')
+        table = meta.dataframe
         self.mudata = mudata
         self.modalities = modalities
         self.metadata = meta
@@ -61,11 +62,17 @@ class experiment:
             return
 
         self.modalities = {}
-        for i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa in zip(
-            table['location'], table['sample'], table['batch'], table['group'],
-            table['modality'], table['taxa']
-        ):
-            
+        for ind, row in table.iterrows():
+             
+            i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa = (
+                row['location'],
+                row['sample'],
+                row['batch'],
+                row['group'],
+                row['modality'],
+                row['taxa']
+            )
+
             # extension of taxa: you can specify a specific version of the genome
             # assembly when specifying taxa. leaving it out allows exprmat to choose
             # the assembly (the latest version) automatically.
@@ -197,6 +204,51 @@ class experiment:
                     os.path.join(self.directory, 'tcr', i_sample + '.tsv.gz'), 
                     sep = '\t', index = False
                 )
+
+            elif i_mod == 'cite':
+
+                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
+                if not 'cite' in self.modalities.keys(): self.modalities['cite'] = {}
+
+                # we automatically infer from the given location names to select
+                # the correct way of loading samples:
+
+                if i_loc.endswith('.h5'):
+                    
+                    a, b = read_h5_cite(
+                        src = i_loc, metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
+                    )
+
+                    self.modalities['rna'][i_sample] = a
+                    self.modalities['cite'][i_sample] = b
+
+                else:
+                    a, b = read_mtx_cite(
+                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                        raw = False, default_taxa = i_taxa, eccentric = eccentric
+                    )
+
+                    self.modalities['rna'][i_sample] = a
+                    self.modalities['cite'][i_sample] = b
+                
+                self.modalities['rna'][i_sample].var = \
+                    st.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
+                
+                rna_auto = row.copy()
+                rna_auto['modality'] = 'rna'
+                self.metadata.insert_row(rna_auto)
+
+                if save_simultaneously:
+                    os.makedirs(os.path.join(self.directory, 'rna'), exist_ok = True)
+                    os.makedirs(os.path.join(self.directory, 'cite'), exist_ok = True)
+                    self.modalities['rna'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'rna', i_sample + '.h5ad')
+                    )
+
+                    self.modalities['cite'][i_sample].write_h5ad(
+                        os.path.join(self.directory, 'cite', i_sample + '.h5ad')
+                    )
             
             elif i_mod == 'rnasp-c':
                 
@@ -682,6 +734,49 @@ class experiment:
                 pass
 
             pass # merging 'rna'.
+
+        
+        if 'cite' in self.modalities.keys():
+
+            filtered = {}
+            for rnak in self.modalities['cite'].keys():
+
+                # if following the recommended routine, by the time one will need
+                # to merge the datasets, the X slot should contain log normalized values.
+
+                filtered[rnak] = ad.AnnData(
+                    X = self.modalities['cite'][rnak].X,
+                    obs = self.modalities['cite'][rnak].obs,
+                    var = self.modalities['cite'][rnak].var
+                )
+
+                if 'counts' in self.modalities['cite'][rnak].layers.keys():
+                    filtered[rnak].layers['counts'] = self.modalities['cite'][rnak].layers['counts']
+
+                for obsm in obsms:
+                    filtered[rnak].obsm[obsm] = self.modalities['cite'][rnak].obsm[obsm]
+
+                if subset_dict is not None:
+                    if rnak not in subset_dict.keys():
+                        del filtered[rnak]
+                    
+                    else:
+                        cell_mask = [
+                            x in subset_dict[rnak] 
+                            for x in filtered[rnak].obs[subset_key].tolist()
+                        ]
+
+                        if not all(cell_mask):
+                            filtered[rnak] = filtered[rnak][cell_mask, :]
+
+
+            # merge rna st.
+            merged['cite'] = ad.concat(
+                filtered, axis = 'obs', 
+                join = join, label = 'sample'
+            )
+
+            pass # merging 'cite'.
         
         
         # integrate tcr metadata
@@ -875,7 +970,7 @@ class experiment:
                 else: warning(f'`{key}` with unsupported type. skipped.')
                 pass
 
-            pass # merging 'rna'.
+            pass # merging 'rnasp-c'.
 
 
         if len(merged) > 0:
@@ -1005,6 +1100,9 @@ class experiment:
         
     def do_for_rna(self, run_on_samples, func, **kwargs):
         return self.do_for_modality('rna', run_on_samples, func, **kwargs)
+
+    def do_for_cite(self, run_on_samples, func, **kwargs):
+        return self.do_for_modality('cite', run_on_samples, func, **kwargs)
     
     def do_for_atac(self, run_on_samples, func, **kwargs):
         return self.do_for_modality('atac', run_on_samples, func, **kwargs)
@@ -1091,6 +1189,15 @@ class experiment:
     ):
         return self.plot_for_modality(
             'rna', run_on_samples, func, 
+            run_on_splits, split_key, split_selection, **kwargs
+        )
+    
+    def plot_for_cite(
+        self, run_on_samples, func,
+        run_on_splits = False, split_key = None, split_selection = None, **kwargs
+    ):
+        return self.plot_for_modality(
+            'cite', run_on_samples, func, 
             run_on_splits, split_key, split_selection, **kwargs
         )
 
@@ -1512,6 +1619,9 @@ class experiment:
     def run_rna_leiden(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_leiden, **kwargs)
 
+    def run_rna_sc3(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_sc3, **kwargs)
+
     def run_rna_leiden_subcluster(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_leiden_subcluster, **kwargs)
 
@@ -1661,6 +1771,9 @@ class experiment:
     def run_rna_principle_tree_trace(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_principle_tree_trace, **kwargs)
 
+    def run_rna_cytotrace(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_cytotrace, **kwargs)
+
     def run_rna_metacell(self, run_on_samples = False, **kwargs):
         mc = self.do_for_rna(run_on_samples, st.rna_metacell, **kwargs)
         
@@ -1692,8 +1805,10 @@ class experiment:
             self.metadata.insert_row(props)
             if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
             self.modalities['rna'][props['sample']] = mc
-
     
+    def run_rna_infer_tf_activity(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_infer_tf_activity, **kwargs)
+
     def run_rna_construct_atlas(self, run_on_samples = False, **kwargs):
         self.do_for_rna(
             run_on_samples, st.rna_construct_atlas, 
@@ -1701,10 +1816,19 @@ class experiment:
             expm_subset = self.subset,
             **kwargs
         )
-
     
     def run_rna_project(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_project, **kwargs)
+    
+    def run_rna_gate_polygon(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_gate_polygon, **kwargs)
+
+
+    def run_cite_clr_normalize(self, run_on_samples = False, **kwargs):
+        self.do_for_cite(run_on_samples, st.cite_centered_log_ratio, **kwargs)
+
+    def run_cite_gate_polygon(self, run_on_samples = False, **kwargs):
+        self.do_for_cite(run_on_samples, st.rna_gate_polygon, **kwargs)
 
     
     def run_atac_make_bins(self, run_on_samples = False, **kwargs):
@@ -2126,6 +2250,9 @@ class experiment:
     def plot_rna_cnmf_distance_usages(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_cnmf_distance_usages, **kwargs)
     
+    def plot_rna_cnmf_distance_modules(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_cnmf_distance_modules, **kwargs)
+    
     def plot_rna_graph(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_graph, **kwargs)
 
@@ -2134,6 +2261,24 @@ class experiment:
 
     def plot_rna_principle_tree_trace(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_principle_tree_trace, **kwargs)
+    
+    def plot_cite_gene_gene(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_gene_gene, **kwargs)
+
+    def plot_cite_embedding(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_embedding, **kwargs)
+    
+    def plot_cite_embedding_mask(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_embedding_mask, **kwargs)
+    
+    def plot_cite_embedding_atlas(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_embedding_atlas, **kwargs)
+
+    def plot_cite_embedding_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_multiple_embedding, **kwargs)
+    
+    def plot_cite_embedding_atlas_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_cite(run_on_samples, st.rna_plot_multiple_embedding_atlas, **kwargs)
 
     def plot_atac_qc(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.atac_plot_qc, **kwargs)
@@ -2246,10 +2391,11 @@ class experiment:
         )
 
 
-    def save(self, fdir = None, save_samples = True):
+    def save(self, fdir = None, subset = None, save_samples = True):
 
         import os
         if fdir is None: fdir = self.directory
+        if subset is not None: self.subset = subset
 
         os.makedirs(fdir, exist_ok = True)
         self.metadata.save(os.path.join(fdir, 'metadata.tsv'))
@@ -2262,17 +2408,19 @@ class experiment:
                 rec.write_h5mu(fpath)
 
         if self.mudata is not None:
-            if self.subset is None:
+            if (self.subset is None) or (fdir != self.directory):
                 info(f"main dataset write to {os.path.join(fdir, 'integrated.h5mu')}")
                 save_h5mu_handle_recreate(self.mudata, os.path.join(fdir, 'integrated.h5mu'))
+                self.directory = fdir
+
             else: 
                 info(f"main dataset write to {os.path.join(fdir, 'subsets', self.subset + '.h5mu')}")
                 save_h5mu_handle_recreate(self.mudata, os.path.join(fdir, 'subsets', self.subset + '.h5mu'))
 
         if not save_samples: return
 
-        info('saving individual samples. (pass `save_samples = False` to skip)')
-        if self.modalities is not None:
+        if (self.modalities is not None) and (len(self.modalities) > 0):
+            info('saving individual samples. (pass `save_samples = False` to skip)')
             for key in self.modalities.keys():
                 os.makedirs(os.path.join(fdir, key), exist_ok = True)
                 for sample in pprog(list(self.modalities[key].keys()), desc = f'modality [{key}]'):

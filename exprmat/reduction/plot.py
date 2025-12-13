@@ -66,7 +66,7 @@ def embedding_atlas(
     frameon = 'small', fontsize = 10,
     annotate = True, annotate_style = 'index', annotate_fontsize = 12,
     annotate_foreground = 'black', annotate_stroke = 'white',
-    ticks = False,
+    ticks = False, remove_top = False,
     dpi = 100, sample_name = None
 ):
     res_factor = 1.5
@@ -303,6 +303,7 @@ def embedding(
     # contour plotting option.
     contour_plot = False,
     contour_fill = False,
+    contour_palatte = None,
     contour_mask = None,
     contour_mask_values = [],
     contour_linewidth = 0.8,
@@ -319,6 +320,7 @@ def embedding(
 
     title = None, figsize = (4, 4), ax = None, dpi = 100, sample_name = None,
     cmap = 'turbo', cmap_reverse = False, cmap_lower = '#000000',
+    remove_top = None,
     hue_norm = None, 
     ticks = False,
     frameon = 'small',
@@ -369,7 +371,17 @@ def embedding(
     else: error(f'unable to find feature `{color}` in metadata or variables.')
 
     df['label'] = labels
-
+    
+    if (type(labels[0]) is int) or \
+         (type(labels[0]) is float) or \
+         (type(labels[0]) is np.float32) or \
+         (type(labels[0]) is np.float64) or \
+         (type(labels[0]) is np.uint32):
+        if isinstance(remove_top, int):
+            threshold = df['label'].nlargest(remove_top).min()
+            df = df[df['label'] < threshold].copy()
+            labels = df['label'].tolist()
+    
     if ax is None:
         fig, axes = plt.subplots(figsize = figsize, dpi = dpi)
     else: axes = ax
@@ -546,7 +558,7 @@ def embedding(
             x = cx, y = cy, warn_singular = False,
             linewidths = contour_linewidth, bw_adjust = contour_bw, bw_method = 'scott',
             fill = contour_fill, ax = axes, 
-            palette = None, color = contour_default_color, alpha = contour_alpha,
+            palette = contour_palatte, color = contour_default_color, alpha = contour_alpha,
             levels = contour_levels, legend = False
         )
     
@@ -795,7 +807,7 @@ def gene_gene(
          (type(labels[0]) is float) or \
          (type(labels[0]) is np.float32) or \
          (type(labels[0]) is np.float64) or \
-         (type(labels[0]) is np.int):
+         (type(labels[0]) is np.int32):
         
         cmap = palettes.get_palette(cmap, 256) if isinstance(cmap, str) else cmap
 

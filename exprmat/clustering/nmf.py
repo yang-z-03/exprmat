@@ -13,7 +13,6 @@ def nmf(
     random_state = 42, verbose = 0, shuffle = False
 ):
     
-    matrix[np.isnan(matrix)] = 0
     w, h, n = non_negative_factorization(
         matrix, W, H, n_components = n_comps,
         init = init, 

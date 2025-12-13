@@ -53,13 +53,14 @@ def serial_matrix(dist, method = "ward", seed = 42):
     '''
     np.random.seed(seed)
 
-    N = len(dist)
     flat_dist_mat = squareform(dist)
-    res_linkage = linkage(flat_dist_mat, method = method, preserve_input = True)
+    N = len(flat_dist_mat)
+    
+    res_linkage = linkage(dist, method = method, preserve_input = True)
     res_order = seriation(res_linkage, N, N + N-2)
-    seriated_dist = np.zeros((N,N))
+    seriated_dist = np.zeros((N, N))
     a,b = np.triu_indices(N, k = 1)
-    seriated_dist[a,b] = dist[ [res_order[i] for i in a], [res_order[j] for j in b]]
+    seriated_dist[a,b] = flat_dist_mat[ [res_order[i] for i in a], [res_order[j] for j in b]]
     seriated_dist[b,a] = seriated_dist[a,b]
     
     return seriated_dist, res_order, res_linkage

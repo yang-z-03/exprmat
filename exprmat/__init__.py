@@ -14,10 +14,13 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['GOTO_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 
+# public expose references
 import mudata as mu
 import anndata as ad
 import scanpy as sc
 import pandas as pd
+import numpy as np
+
 import pathlib
 from PIL import Image
 
@@ -109,7 +112,7 @@ basepath = config['data']
 
 # core method exports
 from exprmat.utils import setup_styles, savefig
-from exprmat.ansi import error, warning, info, pprog, pproga
+from exprmat.ansi import pprog, pproga, info, error, warning
 from exprmat.reader.experiment import experiment, load_experiment
 from exprmat.reader.metadata import metadata, load_metadata
 import exprmat.reader.static as st
@@ -192,24 +195,36 @@ def memory():
 setwd = os.chdir
 getwd = os.getcwd
 
+import tqdm
+# https://github.com/tqdm/tqdm/issues/457
+tqdm.tqdm(disable = True, total = 0)
+
 
 __all__ = [
-    'setup_styles',
+    # exposed external namespace
+    'np', 'mu', 'ad', 'sc', 'pd',
+    
+    # exposed internal namespace
+    'st',
+
+    # expose classes
     'experiment',
     'metadata',
+    'configuration'
+
+    # top-level methods
     'load_experiment',
     'load_metadata',
     'version',
-    'memory',
+    'version_db'
     'cuda',
+    'memory',
     'setwd',
     'getwd',
-    'error',
-    'warning',
-    'info',
     'pprog',
     'pproga',
     'savefig',
 
-    'st',
+    # constants
+    'SPECIFICATION'
 ]

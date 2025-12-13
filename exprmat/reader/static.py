@@ -70,6 +70,7 @@ def rna_qc(
     ribo_genes = None,
     ribo_percent = None,
     outlier_mode = 'mads',
+    max_genes = None,
     outlier_n = 5,
     doublet_method = 'scrublet',
     min_cells = 3,
@@ -85,7 +86,8 @@ def rna_qc(
         outlier_n = outlier_n,
         doublet_method = doublet_method,
         min_cells = min_cells,
-        min_genes = min_genes
+        min_genes = min_genes,
+        max_genes = max_genes
     )
 
 
@@ -546,7 +548,7 @@ def rna_opa(
 ):
     from exprmat.descriptive.gse import opa
     return opa(
-        adata, taxa = taxa, de_slot = de_slot, group_name = None,
+        adata, taxa = taxa, de_slot = de_slot, group_name = group_name,
         min_pct = min_pct, max_pct_reference = max_pct_reference,
         min_lfc = min_lfc, max_lfc = max_lfc, remove_zero_pval = remove_zero_pval,
         use_abs_lfc = use_abs_lfc, min_abs_lfc = min_abs_lfc, max_abs_lfc = max_abs_lfc,
@@ -977,6 +979,18 @@ def rna_principle_tree_trace(adata, sample_names, **kwargs):
     trace_trajectory(adata, **kwargs)
 
 
+def rna_cytotrace(adata, sample_names, **kwargs):
+    from exprmat.trajectory.cytotrace import cytotrace2
+    df = cytotrace2(adata, **kwargs)
+    for col in df.columns:
+        adata.obs[col] = df[col]
+
+
+def rna_sc3(adata, sample_names, **kwargs):
+    from exprmat.clustering.sc3 import consensus
+    df = consensus(adata, **kwargs)
+
+
 def rna_metacell(
     adata, sample_names, hvg_key = 'vst.hvg', 
     counts_key = 'counts', lognorm_key = 'X',
@@ -1015,6 +1029,93 @@ def rna_metacell(
     return metacell[0]
 
 
+def rna_infer_tf_activity(
+    adata, sample_names, 
+
+    layer: str = 'counts',
+    gene: str = 'gene',
+    method: str = 'grnboost2',
+    taxa: str = 'hsa',
+    ncpus: int = 1,
+    seed: int = 42,
+
+    features: str = 'genes',
+    cistromes: str = 'motifs',
+    thresholds = [0.75, 0.90],
+    top_n_targets = [50],
+    top_n_regulators = [5, 10, 50],
+    min_genes = 20,
+    mask_dropout = True,
+    keep_only_activating = True,
+    rank_threshold = 5000,
+    auc_threshold = 0.05,
+    nes_threshold = 3.0,
+    max_similarity_fdr = 0.001,
+    min_orthologous_identity = 0,
+    chunk_size = 100,
+
+    weighted: bool = False,
+
+    key_adjacencies = 'tf.adjacencies',
+    key_added = 'tf'
+):
+    from exprmat.grn import auc_signature, prune, adjacencies, df_to_regulons
+    
+    if key_adjacencies:
+        if key_adjacencies in adata.uns.keys():
+            adj = adata.uns[key_adjacencies]
+        else:
+            adj = adjacencies(
+                adata, 
+                taxa = taxa,
+                layer = layer,
+                gene = gene,
+                method = method,
+                ncpus = ncpus, 
+                seed = seed
+            )
+            adata.uns[key_adjacencies] = adj
+    
+    else:
+        adj = adjacencies(
+            adata, 
+            taxa = taxa,
+            layer = layer,
+            gene = gene,
+            method = method,
+            ncpus = ncpus, 
+            seed = seed
+        )
+
+    pr = prune(
+        adata, adj, taxa,
+        layer = layer, gene = gene,
+        features = features, cistromes = cistromes,
+        thresholds = thresholds,
+        top_n_targets = top_n_targets,
+        top_n_regulators = top_n_regulators,
+        min_genes = min_genes,
+        mask_dropout = mask_dropout,
+        keep_only_activating = keep_only_activating,
+        rank_threshold = rank_threshold,
+        auc_threshold = auc_threshold,
+        nes_threshold = nes_threshold,
+        max_similarity_fdr = max_similarity_fdr,
+        min_orthologous_identity = min_orthologous_identity,
+        chunk_size = chunk_size,
+        ncpus = ncpus
+    )
+
+    regulons = df_to_regulons(pr)
+    auc = auc_signature(
+        adata, regulons, layer = layer, gene = gene, 
+        auc_threshold = auc_threshold, weighted = weighted, ncpus = 1, seed = seed
+    )
+
+    adata.obsm[key_added] = auc
+    return
+
+
 def rna_construct_atlas(
     adata, sample_names, expm_dir, expm_subset, **kwargs
 ):
@@ -1030,6 +1131,37 @@ def rna_project(
 ):
     from exprmat.transfer.atlas import project
     project(expm = adata, **kwargs)
+
+
+def rna_gate_polygon(adata, sample_name, **kwargs):
+    from exprmat.clustering.gating import polygon_gate
+    polygon_gate(adata = adata, **kwargs)
+
+
+def rna_deconvolute(bulk, sample_name, reference, key_added = 'deconv', **kwargs):
+    # this method requires to run on bulk-rna experiments. with a given single-cell
+    # rna reference. both are of modality 'rna'.
+    from exprmat.deconv.deconv import deconvolute
+    from exprmat import experiment
+    if isinstance(reference, experiment):
+        reference.check_merged('rna')
+        reference = reference['rna']
+    
+    signature, deconv = deconvolute(reference = reference, bulk = bulk, **kwargs)
+    if signature: bulk.varm[f'{key_added}.signature'] = signature.T
+    if deconv:
+        deconv.index = bulk.obs_names
+        bulk.obsm[f'{key_added}'] = deconv
+
+
+def cite_centered_log_ratio(
+    adata, sample_name, key_source = 'X', key_added = 'clr', **kwargs
+):
+    from exprmat.preprocessing import centered_log_ratio
+    centered_log_ratio(adata, counts = key_source, dest = key_added)
+    if key_source == 'X': adata.layers['counts'] = adata.X
+    adata.X = adata.layers[key_added]
+
 
 def atac_filter_cells(
     adata, sample_name, min_counts = 5000, max_counts = 100000, 
@@ -1673,9 +1805,12 @@ def rna_plot_kde(
     fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
     
     for feat_id in range(len(groups)):
-        try:
+        # try:
             subset = adata[adata.obs[grouping_key] == groups[feat_id],:]
             ann = subset.obs[background].value_counts().index.tolist()
+
+            if not isinstance(axes, np.ndarray):
+                axes = np.array([axes])
 
             if len(axes.shape) == 2:
 
@@ -1683,12 +1818,12 @@ def rna_plot_kde(
                 # for the subset maybe extremely biased and uncomparable.
                 embedding(
                     adata, basis, color = background,
-                    default_color = '#eeeeee', ptsize = 8,
+                    default_color = '#eeeeee', ptsize = 1,
                     annotate = annotate, annotate_style = 'text',
                     legend = False, contour_plot = False,
                     annotate_fontsize = annotate_fontsize,
                     annotate_only = ann,
-                    cmap = None, add_outline = True, outline_color = '#777777',
+                    cmap = None, add_outline = False, outline_color = '#777777',
                     ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
                     sample_name = sample_name, title = groups[feat_id]
                 )
@@ -1721,7 +1856,7 @@ def rna_plot_kde(
                     sample_name = sample_name, title = groups[feat_id], **kwargs
                 )
                 
-        except: pass
+        # except: pass
     
     fig.set_figwidth(figsize[0])
     fig.set_figheight(figsize[1])
@@ -1737,14 +1872,13 @@ def rna_plot_projection(
     # atlas background
     background = 'annotation',
     annotate = True, annotate_fontsize = 9, 
+    groupby = None, groups = None, ncols = 3,
     **kwargs
 ):
     from exprmat.reduction.plot import embedding
     import matplotlib.pyplot as plt
     import warnings
     warnings.filterwarnings('ignore')
-
-    fig, axes = plt.subplots(1, 1, dpi = dpi, figsize = figsize)
 
     from scipy.sparse import csr_matrix
     tab = adata.uns[projection_key]
@@ -1754,27 +1888,94 @@ def rna_plot_projection(
     bg.obs['batch'] = tab['batch'].tolist()
     bg.obs['annotation'] = bg.obs['annotation'].astype('category')
     bg.obs['batch'] = bg.obs['batch'].astype('category')
-    bg.obsm['basis'] = tab[['xf', 'yf']].copy().values
-
-    embedding(
-        bg, basis = 'basis', color = background,
-        default_color = '#eeeeee', ptsize = 8,
-        annotate = annotate, annotate_style = 'text',
-        legend = False, contour_plot = False,
-        annotate_fontsize = annotate_fontsize,
-        annotate_only = None,
-        cmap = None, add_outline = True, outline_color = '#777777',
-        ax = axes, dpi = dpi,
-        sample_name = sample_name
-    )
+    bg.obsm['basis'] = tab[['x', 'y']].copy().values
     
-    embedding(
-        adata, basis = projection_key, color = color,
-        ax = axes, dpi = dpi, 
-        sample_name = sample_name, **kwargs
-    )
+    if groupby:
 
-    return fig
+        cats = adata.obs[groupby].cat.categories.tolist()
+        if groups is None: groups = cats
+
+        n_features = len(groups)
+        nrows = n_features // ncols
+        if n_features % ncols != 0: nrows += 1
+        fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
+
+        for feat_id in range(len(groups)):
+            try:
+                subset = adata[adata.obs[groupby] == groups[feat_id],:]
+
+                if len(axes.shape) == 2:
+
+                    # we need to plot a whole map as the background,
+                    # for the subset maybe extremely biased and uncomparable.
+                    embedding(
+                        bg, basis = 'basis', color = background,
+                        default_color = '#eeeeee', ptsize = 8,
+                        annotate = annotate, annotate_style = 'text',
+                        legend = False, contour_plot = False,
+                        annotate_fontsize = annotate_fontsize,
+                        annotate_only = None,
+                        cmap = None, add_outline = True, outline_color = '#777777',
+                        ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi,
+                        sample_name = sample_name
+                    )
+
+                    embedding(
+                        subset, basis = projection_key, color = color,
+                        ax = axes[feat_id // ncols, feat_id % ncols], dpi = dpi, title = groups[feat_id],
+                        sample_name = sample_name, **kwargs
+                    )
+
+                elif len(axes.shape) == 1:
+
+                    embedding(
+                        bg, basis = 'basis', color = background,
+                        default_color = '#eeeeee', ptsize = 8,
+                        annotate = annotate, annotate_style = 'text',
+                        legend = False, contour_plot = False,
+                        annotate_fontsize = annotate_fontsize,
+                        annotate_only = None,
+                        cmap = None, add_outline = True, outline_color = '#777777',
+                        ax = axes[feat_id], dpi = dpi,
+                        sample_name = sample_name
+                    )
+
+                    embedding(
+                        subset, basis = projection_key, color = color,
+                        ax = axes[feat_id], dpi = dpi, title = groups[feat_id],
+                        sample_name = sample_name, **kwargs
+                    )
+
+            except: pass
+
+        fig.set_figwidth(figsize[0])
+        fig.set_figheight(figsize[1])
+        fig.tight_layout()
+        return fig
+    
+    else:
+
+        fig, axes = plt.subplots(1, 1, dpi = dpi, figsize = figsize)
+    
+        embedding(
+            bg, basis = 'basis', color = background,
+            default_color = '#eeeeee', ptsize = 8,
+            annotate = annotate, annotate_style = 'text',
+            legend = False, contour_plot = False,
+            annotate_fontsize = annotate_fontsize,
+            annotate_only = None,
+            cmap = None, add_outline = True, outline_color = '#777777',
+            ax = axes, dpi = dpi,
+            sample_name = sample_name
+        )
+
+        embedding(
+            adata, basis = projection_key, color = color,
+            ax = axes, dpi = dpi, 
+            sample_name = sample_name, **kwargs
+        )
+
+        return fig
 
 
 def rna_plot_dot(
@@ -1917,7 +2118,7 @@ def rna_plot_multiple_embedding_atlas(
     fig, axes = plt.subplots(nrows, ncols, dpi = dpi)
 
     for feat_id in range(len(features)):
-        try:
+        # try:
             if len(axes.shape) == 2:
                 embedding_atlas(
                     adata, basis, color = features[feat_id],
@@ -1931,7 +2132,7 @@ def rna_plot_multiple_embedding_atlas(
                     ax = axes[feat_id], dpi = dpi,
                     sample_name = sample_name, **kwargs
                 )
-        except: pass
+        # except: pass
     
     fig.set_figwidth(figsize[0])
     fig.set_figheight(figsize[1])

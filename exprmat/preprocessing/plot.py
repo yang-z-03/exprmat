@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from exprmat.plotting.utils import density
 
 
 def rna_plot_qc_metrics(adata, sample_name, figsize = (10, 2.2)):
@@ -39,9 +40,9 @@ def rna_plot_qc_metrics(adata, sample_name, figsize = (10, 2.2)):
     axes[3].scatter(
         adata.obs['n.genes'].tolist(),
         adata.obs['n.umi'].tolist(),
-        c = adata.obs['qc'].map(colors), s = 2
+        c = adata.obs['qc'].map(colors), s = 1
     )
-    
+
     axes[3].scatter(
         doublets['n.genes'].tolist(),
         doublets['n.umi'].tolist(),

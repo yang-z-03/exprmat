@@ -11,6 +11,7 @@ from exprmat.lr.utils import default_params as V
 from exprmat.lr.utils import default_primary_columns as P
 from exprmat.ansi import error, warning, info
 from exprmat.data.finders import basepath
+from exprmat.data.orthologs import get_orthologs_symbol
 
 
 def select_resource(taxa, resource_name: str = V.resource_name) -> DataFrame:
@@ -48,9 +49,10 @@ def handle_resource(
                 # to the destination (currently handling) taxa
                 if source_taxa != destination_taxa:
                     resource = translate_resource(
-                        resource, map_df = get_orthologs(
+                        resource, map_df = get_orthologs_symbol(
                             taxa = source_taxa, destination = destination_taxa,
-                            min_evidence = min_evidence, columns = None
+                            # min_evidence = min_evidence, columns = None,
+                            suppress_many_to_one = False, suppress_one_to_many = False
                         ), columns = ['ligand', 'receptor'], replace = True,
 
                         # here, we will be harsher and only keep mappings that don't map to more 
@@ -125,12 +127,12 @@ def translate_column(resource, map_df, column, replace=True, one_to_many = 1,):
     
     if not isinstance(one_to_many, int):
         error("`one_to_many` should be a positive integer.")
-    if ['source', 'target'] != map_df.columns.tolist():
-        error("The `map_df` data frame must have two columns named 'source' and 'target'.")
+    if ['source', 'dest'] != map_df.columns.tolist():
+        error("The `map_df` data frame must have two columns named 'source' and 'dest'.")
 
     # get orthologs
     map_df = map_df.set_index("source")
-    map_dict = map_df.groupby(level = 0)["target"].apply(list).to_dict()
+    map_dict = map_df.groupby(level = 0)["dest"].apply(list).to_dict()
     map_data = generate_orthologs(resource, column, map_dict, one_to_many)
 
     # join orthologs
@@ -157,37 +159,3 @@ def translate_resource(resource, map_df, columns = ['ligand', 'receptor'], **kwa
         resource = translate_column(resource, map_df, column, **kwargs)
     return resource
 
-
-def get_orthologs(taxa, destination, min_evidence = 3, columns = None ):
-    """
-    HCOP is a composite database combining data from various orthology resources.
-    It provides a comprehensive set of orthologs among human, mouse, and rat, among many other species.
-
-    If you use this function, please reference the original HCOP papers:
-    -  Eyre, T.A., Wright, M.W., Lush, M.J. and Bruford, E.A., 2007. HCOP: a searchable database of 
-       human orthology predictions. Briefings in bioinformatics, 8(1), pp.2-5.
-    -  Yates, B., Gray, K.A., Jones, T.E. and Bruford, E.A., 2021. Updates to HCOP: the HGNC comparison 
-       of orthology predictions tool. Briefings in Bioinformatics, 22(6), p.bbab155.
-
-    For more information, please visit the HCOP website: https://www.genenames.org/tools/hcop/,
-    or alternatively check the bulk download FTP links page: https://ftp.ebi.ac.uk/pub/databases/genenames/hcop/
-    """
-
-    filename = os.path.join(basepath, taxa, 'orthologs', destination + '.tsv.gz')
-    if not os.path.exists(filename):
-        error(f'the orthologs of requested species `{destination}` (from {taxa}) is not registered in database.')
-    
-    mapping = read_table(filename, sep = "\t")
-    mapping['evidence'] = mapping['support'].apply(lambda x: len(x.split(",")))
-    mapping = mapping[mapping['evidence'] >= min_evidence]
-
-    if columns is not None:
-        mapping = mapping[columns]
-    else:
-        columns = []
-        for x in mapping.columns.tolist():
-            if x.endswith('_symbol'): columns.append(x)
-        mapping = mapping[columns]
-
-    mapping.columns.names = ['source', 'target']
-    return mapping

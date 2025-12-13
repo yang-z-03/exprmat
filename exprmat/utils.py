@@ -412,6 +412,7 @@ seurat_to_10x <- function(srat, outdir) {
     require(Matrix)
     sparse <- Matrix(srat @ assays $ RNA @ counts, sparse = T)
     writeMM(sparse, file = paste(outdir, 'matrix.mtx', sep = '/'))
+    write.table(srat @ meta.data, paste(outdir, 'metadata.tsv', sep = '/'), sep = '\t', quote = FALSE)
 }
 
 seurat_to_adata <- function(srat, outfile) {

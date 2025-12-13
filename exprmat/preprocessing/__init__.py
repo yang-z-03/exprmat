@@ -33,6 +33,15 @@ def log_transform(adata, norm = 'norm', dest = 'lognorm'):
     return adata
 
 
+def centered_log_ratio(adata, counts = 'X', dest = 'clr'):
+
+    m_c = adata.X if counts == 'X' else adata.layers[counts]
+    gm = np.exp(np.log1p(m_c).mean(axis = 1))
+    clr = np.log1p(m_c / gm).tocsr()
+    adata.layers[dest] = clr
+    return adata
+
+
 def scale(adata, lognorm = 'lognorm', dest = 'scaled', gene_mean = None, gene_stdev = None):
     
     m_lognorm = adata.X if lognorm == 'X' else adata.layers[lognorm]

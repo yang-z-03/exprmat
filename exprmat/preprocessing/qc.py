@@ -67,6 +67,7 @@ def rna_qc(
 
     # outlier quality filter
     outlier_mode = 'tukey',
+    max_genes = None,
     outlier_n = 1.5,
     
     # doublet filter
@@ -129,28 +130,30 @@ def rna_qc(
     adata.obs['pct.mito'] = adata.obs['n.mito'] / adata.obs['n.umi']
     adata.obs['pct.ribo'] = adata.obs['n.ribo'] / adata.obs['n.umi']
 
+    # remove hard limits:
+    adata = adata[adata.obs['n.genes'] >= min_genes, :].copy()
+
     # detect outliers
-    max_genes = None
     if outlier_mode == 'mads':
         umi_lower, umi_upper = mads(adata.obs['n.umi'].to_numpy(), nmads = outlier_n)
     elif outlier_mode == 'tukey':
         umi_lower, umi_upper = tukey(adata.obs['n.umi'].to_numpy(), n = outlier_n)
-    elif isinstance(outlier_mode, int):
-        umi_lower, umi_upper = 200, 2147483646
-        max_genes = outlier_mode
+    elif isinstance(outlier_mode, tuple):
+        umi_lower, umi_upper = outlier_mode
     else: umi_lower, umi_upper = 200, 2147483646
 
     f_obs = \
         (adata.obs['n.umi'] <= umi_upper) & \
         (adata.obs['pct.mito'] < mt_percent) & \
-        (adata.obs['n.umi'] >= umi_lower) & \
-        (adata.obs['n.genes'] >= min_genes)
+        (adata.obs['n.umi'] >= umi_lower)
+    
     if max_genes is not None:
         f_obs = f_obs & (adata.obs['n.genes'] <= max_genes)
     
     if ribo_percent is not None:
         f_obs = f_obs & (adata.obs['pct.ribo'] < ribo_percent)
 
+    adata.var['n.cells'] = np.sum(adata[f_obs, :].X > 0, axis = 0).tolist()[0]
     f_var = adata.var['n.cells'] >= min_cells
 
     # doublet detection using the filtered expression matrix.
@@ -159,10 +162,10 @@ def rna_qc(
     
     doublet_failed = False
     if doublet_method == 'scrublet':
-        # try:
+        try:
             scrublet_init(subset, random_state = 42)
             scrublet(subset)
-        # except: doublet_failed = True
+        except: doublet_failed = True
     
     adata.obs['filter'] = f_obs
     adata.obs['score.doublet'] = 0.0

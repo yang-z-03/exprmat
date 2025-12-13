@@ -343,6 +343,77 @@ def read_h5_rna(
     return final
 
 
+def read_mtx_cite(
+    src: str, prefix: str, 
+    metadata: metadata, sample: str, raw: bool = False,
+    default_taxa = 'mmu', eccentric = None, suppress_filter = False,
+):
+    import warnings
+    warnings.filterwarnings('ignore')
+
+    adata = sc.read_10x_mtx(
+        src, var_names = 'gene_ids', gex_only = False, make_unique = False,
+        prefix = prefix
+    )
+
+    if eccentric is not None:
+        adata.var_names = [eccentric(x) for x in adata.var_names]
+
+    # split the rna and antigen part of the data
+    rna = adata[:, adata.var['feature_types'] == 'Gene Expression'].copy()
+    acap = adata[:, adata.var['feature_types'] == 'Antibody Capture'].copy()
+    del adata
+
+    final = match_matrix_rna(
+        rna, metadata, sample, suppress_filter = suppress_filter,
+        force_filter = raw, default_taxa = default_taxa
+    )
+
+    final_abc = match_matrix_cite(
+        acap, final, metadata, sample, suppress_filter = suppress_filter,
+        force_filter = raw, default_taxa = default_taxa
+    )
+
+    warnings.filterwarnings('default')
+    return final, final_abc
+
+
+def read_h5_cite(
+    src: str, 
+    metadata: metadata, sample: str, raw: bool = False,
+    default_taxa = 'mmu', eccentric = None, suppress_filter = False,
+):
+    import warnings
+    warnings.filterwarnings('ignore')
+
+    adata = sc.read_10x_h5(
+        src, gex_only = False
+    )
+
+    adata.var_names = adata.var['gene_ids'].tolist()
+    rna = adata[:, adata.var['feature_types'] == 'Gene Expression'].copy()
+    acap = adata[:, adata.var['feature_types'] == 'Antibody Capture'].copy()
+    del rna.var
+    del acap.var
+    del adata
+
+    if eccentric is not None:
+        adata.var_names = [eccentric(x) for x in adata.var_names]
+        
+    final = match_matrix_rna(
+        rna, metadata, sample, suppress_filter = suppress_filter,
+        force_filter = raw, default_taxa = default_taxa
+    )
+
+    final_abc = match_matrix_cite(
+        acap, final, metadata, sample, suppress_filter = suppress_filter,
+        force_filter = raw, default_taxa = default_taxa
+    )
+
+    warnings.filterwarnings('default')
+    return final, final_abc
+
+
 def read_table_rna(
     src: str, 
     metadata: metadata, sample: str, raw: bool = False,
@@ -547,7 +618,8 @@ def match_matrix_rna(
         (rows['modality'] == 'rna') |
         (rows['modality'] == 'rnasp-c') |
         (rows['modality'] == 'rnasp-b') |
-        (rows['modality'] == 'rnasp-s')
+        (rows['modality'] == 'rnasp-s') |
+        (rows['modality'] == 'cite')
     ]
     assert len(rows) == 1
     props = rows.iloc[0]
@@ -631,6 +703,56 @@ def match_matrix_rna(
     final.obs['barcode'] = final.obs_names
     final.obs['ubc'] = [props['sample'] + ':' + str(x + 1) for x in range(final.n_obs)]
     final.obs_names = [props['sample'] + ':' + str(x + 1) for x in range(final.n_obs)]
+    del final.var
+    
+    if not isinstance(final.X, csr_matrix):
+        final.X = csr_matrix(final.X)
+
+    del adata_f
+    return final
+
+
+def match_matrix_cite(
+    adata, accompany_rna, metadata: metadata, sample: str, 
+    force_filter = False, default_taxa = 'mmu',
+    do_not_alter_obs_names = False, suppress_filter = False
+):
+
+    # if more than 50000 cells in a single matrix, we just believe that it is
+    # an unfiltered raw matrix. we should roughly filter the empty droplets
+
+    rows = metadata.dataframe[metadata.dataframe['sample'] == sample]
+    assert len(rows) >= 1
+    rows = rows[
+        (rows['modality'] == 'cite')
+    ]
+    assert len(rows) == 1
+    props = rows.iloc[0]
+
+    barcodes = [x.replace(props['sample'] + ':', '') for x in accompany_rna.obs['barcode']]
+    adata_f = adata[barcodes, :].copy()
+    assert adata_f.n_obs > 0
+
+    if not do_not_alter_obs_names:
+        # append the sample name to the barcode
+        adata_f.obs_names = props['sample'] + ':' + adata_f.obs_names
+
+    final = adata_f
+    final.var_names = ['ag:' + x for x in adata_f.var_names]
+    # remove duplicated genes
+    duplicated = set(final.var_names[final.var_names.duplicated()].tolist())
+    final = final[:, final.var_names.duplicated() == False].copy()
+
+    # attach cell metadata onto the obs slot.
+    
+    for k in props.index.tolist():
+        if do_not_alter_obs_names:
+            if k in ['sample', 'batch', 'group']: continue
+        if k not in ['location']: final.obs[k] = props[k]
+    
+    final.obs['barcode'] = final.obs_names
+    final.obs['ubc'] = accompany_rna.obs['ubc'].tolist()
+    final.obs_names = final.obs['ubc'].tolist()
     del final.var
     
     if not isinstance(final.X, csr_matrix):

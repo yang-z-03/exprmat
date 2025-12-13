@@ -3,9 +3,10 @@ import seaborn as sns
 from matplotlib import ticker
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 from exprmat.utils import find_variable, choose_layer
-from exprmat.ansi import error
+from exprmat.ansi import error, info
 
 
 def barplot(
@@ -101,7 +102,9 @@ def barplot(
             values = [x['logc'].tolist() for x in groups]
             if len(values) == 2:
                 w = stats.mannwhitneyu(values[0], values[1])
-                xtl += [ct + '\n{:.3f}'.format(w.pvalue)]
+                rel = np.mean(np.array(values[0])) - np.mean(np.array(values[1]))
+                xtl += [ct + '\n{:.3f}'.format(w.pvalue) + ' ' + ('D' if rel < 0 else 'U')]
+                info(ct + ', p = {:.3f}'.format(w.pvalue) + ', ' + ('D' if rel < 0 else 'U') + ' ' + groups[0].iloc[0, 1] + ' over ' + groups[1].iloc[0, 1])
             else: xtl += [ct]
         
         # axes.set_xticks(selected_groups)
@@ -113,7 +116,9 @@ def barplot(
         xtl = 'whole'
         if len(values) == 2:
             w = stats.mannwhitneyu(values[0], values[1])
-            xtl = 'whole\n{:.3f}'.format(w.pvalue)
+            rel = np.mean(np.array(values[0])) - np.mean(np.array(values[1]))
+            xtl = 'whole\n{:.3f}'.format(w.pvalue) + ' ' + ('D' if rel < 0 else 'U')
+            info(ct + ', p = {:.3f}'.format(w.pvalue) + ', ' + ('D' if rel < 0 else 'U') + ' ' + groups[0].iloc[0, 1] + ' over ' + groups[1].iloc[0, 1])
         axes.set_xticklabels([xtl], rotation = 45)
         pass
 

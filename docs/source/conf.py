@@ -151,6 +151,11 @@ nbsphinx_prolog = """
 
         .ansi-black-intense-fg {
             color: #9a9a9a !important;
+            font-style: italic;
+        }
+
+        div.nboutput.container div.output_area div[class*=highlight] > pre {
+            line-height: 1.5em !important;
         }
     </style>
 """

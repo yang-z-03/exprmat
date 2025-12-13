@@ -39,7 +39,9 @@ def scvi(
     seeding = False,
     label_key = 'cell.type',
     unknown_value = 'imputed',
-    scanvi_training_epochs = None
+    scanvi_training_epochs = None,
+
+    scvi_train_kwargs = {}
 ):
 
     # apply inplace with adata.X.
@@ -83,6 +85,7 @@ def scvi(
             simple_progress_bar = simple_progress_bar, 
             logger = logger, 
             log_every_n_steps = log_every_n_steps,
+            ** scvi_train_kwargs
         )
 
     if seeding:
