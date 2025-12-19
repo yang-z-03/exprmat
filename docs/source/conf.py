@@ -115,7 +115,7 @@ nbsphinx_prolog = """
         }
 
         html.dark img {
-            filter: invert(1) hue-rotate(.5turn);
+            filter: invert(0.96) hue-rotate(.5turn);
         }
 
         html.dark div.nbinput.container div.input_area {
@@ -157,5 +157,14 @@ nbsphinx_prolog = """
         div.nboutput.container div.output_area div[class*=highlight] > pre {
             line-height: 1.5em !important;
         }
+
+        #content h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 2.5rem;
+            margin-bottom: .5rem;
+            margin-top: 2.5rem !important;
+        }
+        
     </style>
 """

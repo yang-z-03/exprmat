@@ -537,7 +537,7 @@ def embedding(
 
         sb.scatterplot(
             **atlas_data, s = ptsize,
-            alpha = alpha, palette = palette, color = default_color,
+            alpha = alpha, palette = cmap, color = default_color,
             hue = labels, hue_order = None, hue_norm = hue_norm
         )
     

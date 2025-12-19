@@ -33,7 +33,8 @@ exprmat 主模块
 .. py:function:: version_db()
 
     Returns the version string of the database registered and found by the package.
-    Example: ``"0.1.29"``.
+    In the format of major, minor and revision in integral tuples of 3.
+    Example: ``(0, 1, 29)``
 
 
 .. py:function:: version()

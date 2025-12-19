@@ -541,6 +541,7 @@ class experiment:
                     datarows.index.name = None
                     adata.obs = adata.obs.join(datarows)
                     adata.obs_names = 'bulk-atac:' + datarows['sample']
+                    adata.obs_names.name = None
 
                     os.unlink(temp_name + '.tsv.gz')
 
@@ -781,7 +782,7 @@ class experiment:
         
         # integrate tcr metadata
         if ('rna' in merged.keys()) and os.path.exists(os.path.join(self.directory, 'tcr')):
-            self.rna_attach_tcr(merged['rna'], os.path.join(self.directory, 'tcr'))
+            st.rna_attach_tcr(merged['rna'], None, os.path.join(self.directory, 'tcr'))
 
         if 'atac' in self.modalities.keys():
             
@@ -2286,6 +2287,12 @@ class experiment:
     def plot_atac_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(run_on_samples, st.rna_plot_embedding, **kwargs)
     
+    def plot_atac_embedding_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_atac(run_on_samples, st.rna_plot_multiple_embedding, **kwargs)
+
+    def plot_atac_embedding_mask(self, run_on_samples = False, **kwargs):
+        return self.plot_for_atac(run_on_samples, st.rna_plot_embedding_mask, **kwargs)
+    
     def plot_atac_peaks(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac(
             run_on_samples, st.atac_plot_peaks, dump = self.directory,
@@ -2295,6 +2302,11 @@ class experiment:
     def plot_atacg_embedding(self, run_on_samples = False, **kwargs):
         return self.plot_for_atac_gene_activity(run_on_samples, st.rna_plot_embedding, **kwargs)
     
+    def plot_atacg_embedding_multiple(self, run_on_samples = False, **kwargs):
+        return self.plot_for_atac_gene_activity(run_on_samples, st.rna_plot_multiple_embedding, **kwargs)
+    
+    def plot_atacg_embedding_mask(self, run_on_samples = False, **kwargs):
+        return self.plot_for_atac_gene_activity(run_on_samples, st.rna_plot_embedding_mask, **kwargs)
 
     def plot_rnaspc_qc(self, run_on_samples = False, **kwargs):
         return self.plot_for_rnaspc(run_on_samples, st.rna_plot_qc, **kwargs)

@@ -2,10 +2,11 @@
 .. title::
    元数据
 
+.. _create-metadata:
+
 元数据
 ==============
 
-.. _create-metadata:
 
 创建元数据
 -------------------

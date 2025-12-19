@@ -62,3 +62,4 @@ def polygon_gate(
     df.index = df['id'].tolist()
     adata.obs[key_added] = False
     adata.obs.loc[df.index, key_added] = df['gate']
+    adata.obs[key_added] = adata.obs[key_added].astype('str').astype('category')

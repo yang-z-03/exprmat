@@ -80,13 +80,13 @@ def read_multiscale_image_from_spatial(folder):
     
     template = {
         'images': {
-            'hires': highres / 255,
-            'lores': lowres / 255,
+            'hires': (highres / 255) if highres is not None else None,
+            'lores': (lowres / 255) if lowres is not None else None,
             'origin': None
         },
         'scalefactors': {
-            'hires': sf['tissue_hires_scalef'],
-            'lores': sf['tissue_lowres_scalef'],
+            'hires': sf['tissue_hires_scalef'] if highres is not None else None,
+            'lores': sf['tissue_lowres_scalef'] if lowres is not None else None,
             'origin': 1
         },
         'mask': None,

@@ -771,8 +771,8 @@ def stringify_tcr(df, contig, v, d, j, nt, aa):
         else: clone = 'vj(' + df[v] + ', ' + df[j] + ')'
     
     # aa alone may show degrees of degeneration!
-    if nt is not None: clone = clone + (', ' if clone != '' else '') + 'nt(' + df[nt] + ')'
-    elif aa is not None: clone = clone + (', ' if clone != '' else '') + 'aa(' + df[aa] + ')'
+    if nt is not None: clone = clone + (', ' if not isinstance(clone, str) else '') + 'nt(' + df[nt] + ')'
+    elif aa is not None: clone = clone + (', ' if not isinstance(clone, str) else '') + 'aa(' + df[aa] + ')'
     return f'{contig}(' + clone + ')' 
 
 
