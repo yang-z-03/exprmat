@@ -862,5 +862,9 @@ def get_init_pos_from_paga(
 def savefig(
     fig, path, **kwargs
 ):
+    import matplotlib
+    matplotlib.set_loglevel("warning")
+    import fontTools
+    fontTools.log.setLevel('WARNING')
     if 'bbox_inches' in kwargs.keys(): kwargs.pop('bbox_inches')
     fig.savefig(path, bbox_inches = 'tight', **kwargs)

@@ -7,4 +7,3 @@ pandas
 scanpy
 sphinx_design
 nbsphinx
-exprmat

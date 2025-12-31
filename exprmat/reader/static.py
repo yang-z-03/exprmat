@@ -1154,6 +1154,16 @@ def rna_deconvolute(bulk, sample_name, reference, key_added = 'deconv', **kwargs
         bulk.obsm[f'{key_added}'] = deconv
 
 
+def rna_nichenet(adata, sample_name, **kwargs):
+    from exprmat.lr.icnet import nichenet
+    nichenet(adata, **kwargs)
+
+
+def rna_nichenet_infer_targets(adata, sample_name, **kwargs):
+    from exprmat.lr.icnet import nichenet_infer_targets
+    nichenet_infer_targets(adata, **kwargs)
+
+
 def cite_centered_log_ratio(
     adata, sample_name, key_source = 'X', key_added = 'clr', **kwargs
 ):
@@ -2344,6 +2354,11 @@ def rna_plot_principle_tree_trace(adata, sample_name, **kwargs):
     return trace(adata, **kwargs)
 
 
+def rna_plot_nichenet_ligands(adata, sample_name, **kwargs):
+    from exprmat.plotting.icnet import plot_inferred_ligands
+    return plot_inferred_ligands(adata, **kwargs)
+
+
 def atac_plot_qc(adata, sample_name, **kwargs):
     from exprmat.plotting.atac import atac_qc_metrics
     return atac_qc_metrics(adata, sample_name, **kwargs)
@@ -2430,8 +2445,9 @@ def rna_get_lr(
 
 
 def rna_get_markers(
-    adata, sample_name, de_slot = 'markers', group_name = None, max_q = None,
-    min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
+    adata, sample_name, de_slot = 'markers', group_name = None, 
+    min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False,
+    max_q = None, max_p = None
 ):
     params = adata.uns[de_slot]['params']
 
@@ -2453,6 +2469,8 @@ def rna_get_markers(
         tab = tab[~ np.isinf(tab['log10.q'].to_numpy())]
     if max_q is not None and 'q' in tab.columns:
         tab = tab[tab['q'] <= max_q]
+    if max_p is not None and 'p' in tab.columns:
+        tab = tab[tab['p'] <= max_p]
     
     info(
         'fetched diff `' + red(group_name) + '` over `' + green(params['reference']) + '` ' + 

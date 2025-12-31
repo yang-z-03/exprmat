@@ -19,8 +19,8 @@ name = "exprmat"
 description = "exprmat: Routines for expression matrices"
 readme = "readme.md"
 license = {file = "license"}
-requires-python = ">=3.9, <3.13"
-version = "0.1.49"
+requires-python = ">=3.10, <3.13"
+version = "0.1.50"
 authors = [
     {name = "Zheng Yang", email = "xornent@outlook.com"}
 ]

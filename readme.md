@@ -43,18 +43,18 @@ options:
   --version VERSION    The version to fetch from remote.
 ```
 
-Suppose you are installing the database version `0.1.25` to `~/database`.
+Suppose you are installing the database version `0.1.50` to `~/database`.
 
 ```bash
 # enter the intended path of installation
 cd ~/database
 
-# download the version 0.1.25 of database distribution
+# download the version 0.1.50 of database distribution
 # you must download the same version of the database with the package. the database
 # and package content are published strictly synchronically.
 bsync-fetch --id <your-id> --secret <your-api-secret> \
             --bucket exprmat-data --endpoint oss-cn-wuhan-lr.aliyuncs.com \
-            --version 0.1.25
+            --version 0.1.50
 ```
 
 The authentication tokens passed to `--id` and `--secret` is provided by the

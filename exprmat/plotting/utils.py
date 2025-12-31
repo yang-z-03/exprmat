@@ -138,7 +138,7 @@ def hist(
     xticklabels = None, yticklabels = None, 
     xrange = None, yrange = None,
     title = None, ax = None,
-    figsize = (3, 3), dpi = 100
+    figsize = (3, 3), dpi = 100, **kwargs
 ):
     if ax is not None: fig, axis = ax.figure, ax
     else: fig, axis = plt.subplots(1, 1, figsize = figsize, dpi = dpi)
@@ -148,7 +148,7 @@ def hist(
         bins = bins,
         linewidth = 1,
         color = 'black',
-        linestyle = 'solid'
+        linestyle = 'solid', **kwargs
     )
 
     if xlabel: axis.set_xlabel(xlabel, loc = 'center', linespacing = 1.5)

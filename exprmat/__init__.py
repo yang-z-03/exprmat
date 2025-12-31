@@ -82,7 +82,7 @@ due to the extensive size of the reference data. You need to setup the database
 and configure it properly with configuration file `.exprmatrc` under your
 user root or current working directory
 
-For more guide on how to setup the database folder, and more information about
+For more guide on how to install the database, and more information about
 what the database includes, see <https://github.com/yang-z-03/exprmat>
 """
 
@@ -192,12 +192,39 @@ def memory():
     info(f'virtual memory: {format_file_size(virtual)}')
 
 
+def license():
+    print(f'''
+exprmat {ver_string} - Routines to manipulate expression matrices
+Copyright (C) 2025 - 2026 Zheng Yang (杨政) <xornent@outlook.com>
+
+exprmat is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions. 
+You should have received a copy of the GNU General Public License
+version 3 along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+The GNU General Public License does not permit incorporating 
+your program into proprietary programs.
+''')
+
+
+
 setwd = os.chdir
 getwd = os.getcwd
 
 import tqdm
 # https://github.com/tqdm/tqdm/issues/457
 tqdm.tqdm(disable = True, total = 0)
+
+
+# show version info after any install or update of the database.
+# this always synchronizes with the package update.
+
+try:
+    fd = os.open(os.path.join(basepath, '.license'), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    with os.fdopen(fd, "w") as f: f.write("shown")
+    license()
+
+except FileExistsError: pass
 
 
 __all__ = [
@@ -219,6 +246,7 @@ __all__ = [
     'version_db'
     'cuda',
     'memory',
+    'license',
     'setwd',
     'getwd',
     'pprog',

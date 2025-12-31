@@ -13,7 +13,7 @@ def barplot(
     adata, *, gene, 
     slot = 'X', group = 'cell.type', selected_groups = None, selected_splits = None,
     split = 'treat', palette = ['red', 'black'], ax = None, style = 'box',
-    size = (6,3), dpi = 100, violin_kwargs = {}, legend = True
+    size = (6,3), dpi = 100, violin_kwargs = {}, legend = True, flierprops = None
 ):
     
     plt.rcParams["ytick.labelright"] = False
@@ -56,7 +56,7 @@ def barplot(
             x = "row", y = "logc", hue = 'split', ax = axes, fill = True,
             palette = palette, saturation = 0.8, log_scale = False,
             color = '.8', linecolor = '0', order = selected_groups, gap = 0.3,
-            flierprops = dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
+            flierprops = flierprops if flierprops else dict(markerfacecolor = '0.1', markersize = 1, linestyle = 'none'),
             showfliers = True, width = 0.6
         )
     
@@ -108,7 +108,7 @@ def barplot(
             else: xtl += [ct]
         
         # axes.set_xticks(selected_groups)
-        axes.set_xticklabels(xtl, rotation = 45)
+        axes.set_xticklabels(xtl, rotation = 45, ha = 'right', va = 'top')
     
     else:
         groups = [x for _, x in gene_data.groupby(gene_data['split'])]
@@ -119,7 +119,7 @@ def barplot(
             rel = np.mean(np.array(values[0])) - np.mean(np.array(values[1]))
             xtl = 'whole\n{:.3f}'.format(w.pvalue) + ' ' + ('D' if rel < 0 else 'U')
             info(ct + ', p = {:.3f}'.format(w.pvalue) + ', ' + ('D' if rel < 0 else 'U') + ' ' + groups[0].iloc[0, 1] + ' over ' + groups[1].iloc[0, 1])
-        axes.set_xticklabels([xtl], rotation = 45)
+        axes.set_xticklabels([xtl], rotation = 45, ha = 'right', va = 'top')
         pass
 
     axes.spines[['right', 'top']].set_visible(False)

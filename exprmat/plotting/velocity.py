@@ -233,7 +233,8 @@ def velocity_embedding_stream(
         'cmap_reverse': False,
         'cmap_lower': '#000000',
         'hue_norm': None,
-        'frameon': 'small'
+        'frameon': 'small',
+        'embedding_dims': [0, 1]
     }
 
     if ax is None: fig, ax = pl.subplots(figsize = figsize, dpi = dpi)

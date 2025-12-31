@@ -1824,6 +1824,12 @@ class experiment:
     def run_rna_gate_polygon(self, run_on_samples = False, **kwargs):
         self.do_for_rna(run_on_samples, st.rna_gate_polygon, **kwargs)
 
+    def run_rna_nichenet(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_nichenet, **kwargs)
+
+    def run_rna_nichenet_infer_targets(self, run_on_samples = False, **kwargs):
+        self.do_for_rna(run_on_samples, st.rna_nichenet_infer_targets, **kwargs)
+
 
     def run_cite_clr_normalize(self, run_on_samples = False, **kwargs):
         self.do_for_cite(run_on_samples, st.cite_centered_log_ratio, **kwargs)
@@ -2163,6 +2169,9 @@ class experiment:
     def plot_rna_compare_scatter(self, run_on_samples = False, **kwargs):
         return self.plot_for_rna(run_on_samples, st.rna_plot_compare_scatter, **kwargs)
     
+    def plot_rna_nichenet_ligands(self, run_on_samples = False, **kwargs):
+        return self.plot_for_rna(run_on_samples, st.rna_plot_nichenet_ligands, **kwargs)
+    
     def plot_rna_qc_gene_counts(
         self, ncols = 4, figsize = (3, 3)
     ):
@@ -2335,38 +2344,15 @@ class experiment:
 
     # accessor wrappers
 
-    def get_rna_markers(
-        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
-        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
-    ):
-        return self.do_for_rna(
-            run_on_samples, st.rna_get_markers,
-            de_slot = de_slot, group_name = group_name,
-            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
-            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
-        )
+    def get_rna_markers(self, run_on_samples = False, **kwargs):
+        return self.do_for_rna(run_on_samples, st.rna_get_markers, **kwargs)
     
-    def get_atacp_markers(
-        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
-        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
-    ):
-        return self.do_for_atac_peaks(
-            run_on_samples, st.rna_get_markers,
-            de_slot = de_slot, group_name = group_name,
-            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
-            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
-        )
+    def get_atacp_markers(self, run_on_samples = False, **kwargs):
+        return self.do_for_atac_peaks(run_on_samples, st.rna_get_markers, **kwargs)
     
-    def get_atacg_markers(
-        self, run_on_samples = False, de_slot = 'markers', group_name = None, max_q = None,
-        min_pct = 0.25, max_pct_reference = 0.75, min_lfc = 1, max_lfc = 100, remove_zero_pval = False
-    ):
-        return self.do_for_atac_gene_activity(
-            run_on_samples, st.rna_get_markers,
-            de_slot = de_slot, group_name = group_name,
-            max_q = max_q, min_pct = min_pct, min_lfc = min_lfc, max_lfc = max_lfc,
-            max_pct_reference = max_pct_reference, remove_zero_pval = remove_zero_pval
-        )
+    def get_atacg_markers(self, run_on_samples = False, **kwargs):
+        return self.do_for_atac_gene_activity(run_on_samples, st.rna_get_markers, **kwargs)
+    
 
     def get_rna_lr(
         self, run_on_samples = False, lr_slot = 'lr', source_labels = None, target_labels = None,
