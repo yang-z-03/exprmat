@@ -112,7 +112,7 @@ basepath = config['data']
 
 # core method exports
 from exprmat.utils import setup_styles, savefig
-from exprmat.ansi import pprog, pproga, info, error, warning
+from exprmat.ansi import pprog, pproga, info, error, warning, default_logger, logger
 from exprmat.reader.experiment import experiment, load_experiment
 from exprmat.reader.metadata import metadata, load_metadata
 import exprmat.reader.static as st

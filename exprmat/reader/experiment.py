@@ -17,8 +17,310 @@ from exprmat.reader.matcher import (
 from exprmat.reader.matcher import attach_tcr
 from exprmat.ansi import warning, info, error, red, green, pprog, wrap, dtypestr, dtypemat
 from exprmat import config as cfg
+from exprmat import default_logger
 import exprmat.reader.static as st
 import exprmat as em
+
+
+def load_data(row, meta, eccentric = None, dump = '.', save_simultaneously = False) -> tuple[dict, list]:
+    
+    i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa = (
+        row['location'],
+        row['sample'],
+        row['batch'],
+        row['group'],
+        row['modality'],
+        row['taxa']
+    )
+
+    res = {}
+    appending_meta = []
+
+    # extension of taxa: you can specify a specific version of the genome
+    # assembly when specifying taxa. leaving it out allows exprmat to choose
+    # the assembly (the latest version) automatically.
+
+    # e.g.
+    #    mmu            = 'grcm39'
+    #    mmu/grcm38     = 'grcm38'
+
+    if '/' in i_taxa: i_taxa, i_assembly = i_taxa.split('/')
+    else: i_assembly = cfg['default.assembly'][i_taxa]
+    
+    info(f'reading sample {i_sample} [{i_mod}] ...')
+
+    attempt_path = os.path.join(dump, i_mod, i_sample + '.h5ad')
+    if os.path.exists(attempt_path):
+        if not i_mod in res.keys(): res[i_mod] = {}
+        res[i_mod][i_sample] = sc.read_h5ad(attempt_path)
+        warning(f'load pre-exisiting file `{i_mod}/{i_sample}.h5ad`.')
+        return res, []
+
+    if i_mod == 'rna':
+
+        if not 'rna' in res.keys(): res['rna'] = {}
+
+        # we automatically infer from the given location names to select
+        # the correct way of loading samples:
+
+        if i_loc.endswith('.tsv.gz') or i_loc.endswith('.tsv'):
+
+            res['rna'][i_sample] = read_table_rna(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = '\t'
+            )
+
+        elif i_loc.endswith('.csv.gz') or i_loc.endswith('.csv'):
+
+            res['rna'][i_sample] = read_table_rna(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ','
+            )
+        
+        elif i_loc.endswith('.ssv.gz') or i_loc.endswith('.ssv'):
+
+            res['rna'][i_sample] = read_table_rna(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ' '
+            )
+
+        elif i_loc.endswith('.h5ad'):
+
+            res['rna'][i_sample] = read_h5ad_rna(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa
+            )
+
+        elif i_loc.endswith('.h5'):
+            
+            res['rna'][i_sample] = read_h5_rna(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+
+        else:
+            res['rna'][i_sample] = read_mtx_rna(
+                src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+        
+        res['rna'][i_sample].var = \
+            st.search_genes(res['rna'][i_sample].var_names.tolist())
+        
+        # in search for spliced and unspliced reads
+
+        splicing = (
+            (meta.dataframe['sample'] == i_sample) & 
+            (meta.dataframe['modality'] == 'rna.splicing')
+        )
+
+        if splicing.sum() > 1:
+            warning(f'ignored spliced reads for sample [{i_sample}], since you specify more than one.')
+        
+        elif splicing.sum() == 1:
+            
+            import warnings
+            warnings.filterwarnings('ignore')
+
+            splice_loc = meta.dataframe.loc[splicing, :].iloc[0, 0]
+            if os.path.isdir(splice_loc):
+                res['rna'][i_sample] = attach_splice_reads_mtx(
+                    res['rna'][i_sample], 
+                    splice_loc, default_taxa = i_taxa,
+                    sample = i_sample
+                )
+
+            elif splice_loc.endswith('.loom'):
+                res['rna'][i_sample] = attach_splice_reads_loom(
+                    res['rna'][i_sample], 
+                    splice_loc, default_taxa = i_taxa,
+                    sample = i_sample
+                )
+            
+            else: error('skipped spliced matrix, not valid data format.')
+            warnings.filterwarnings('default')
+        
+        else: pass
+
+        if save_simultaneously:
+            os.makedirs(os.path.join(dump, 'rna'), exist_ok = True)
+            res['rna'][i_sample].write_h5ad(
+                os.path.join(dump, 'rna', i_sample + '.h5ad')
+            )
+
+
+    elif i_mod == 'rna.splicing': pass
+    elif i_mod == 'rna.tcr':
+
+        # 10x tcr folder
+        tcr = parse_tcr_10x(
+            os.path.join(i_loc, 'filtered_contig_annotations.csv'),
+            sample = i_sample,
+            filter_non_productive = True,
+            filter_non_full_length = True
+        )
+
+        if not os.path.exists(os.path.join(dump, 'tcr')):
+            os.makedirs(os.path.join(dump, 'tcr'), exist_ok = True)
+
+        tcr.to_csv(
+            os.path.join(dump, 'tcr', i_sample + '.tsv.gz'), 
+            sep = '\t', index = False
+        )
+
+    elif i_mod == 'cite':
+
+        if not 'rna' in res.keys(): res['rna'] = {}
+        if not 'cite' in res.keys(): res['cite'] = {}
+
+        # we automatically infer from the given location names to select
+        # the correct way of loading samples:
+
+        if i_loc.endswith('.h5'):
+            
+            a, b = read_h5_cite(
+                src = i_loc, metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+
+            res['rna'][i_sample] = a
+            res['cite'][i_sample] = b
+
+        else:
+            a, b = read_mtx_cite(
+                src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+
+            res['rna'][i_sample] = a
+            res['cite'][i_sample] = b
+        
+        res['rna'][i_sample].var = \
+            st.search_genes(res['rna'][i_sample].var_names.tolist())
+        
+        rna_auto = row.copy()
+        rna_auto['modality'] = 'rna'
+        appending_meta += [rna_auto]
+
+        if save_simultaneously:
+            os.makedirs(os.path.join(dump, 'rna'), exist_ok = True)
+            os.makedirs(os.path.join(dump, 'cite'), exist_ok = True)
+            res['rna'][i_sample].write_h5ad(
+                os.path.join(dump, 'rna', i_sample + '.h5ad')
+            )
+
+            res['cite'][i_sample].write_h5ad(
+                os.path.join(dump, 'cite', i_sample + '.h5ad')
+            )
+    
+    elif i_mod == 'rnasp-c':
+        
+        if not 'rnasp-c' in res.keys(): res['rnasp-c'] = {}
+
+        from exprmat.reader.spatial import read_seekspace, read_xenium_explorer, is_xenium_explorer
+        
+        if is_xenium_explorer(i_loc):
+            res['rnasp-c'][i_sample] = read_xenium_explorer(
+                src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+        
+        else:
+            res['rnasp-c'][i_sample] = read_seekspace(
+                src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+                raw = False, default_taxa = i_taxa, eccentric = eccentric
+            )
+
+        res['rnasp-c'][i_sample].var = \
+            st.search_genes(res['rnasp-c'][i_sample].var_names.tolist())
+
+
+    elif i_mod == 'rnasp-b':
+        
+        if not 'rnasp-b' in res.keys(): res['rnasp-b'] = {}
+
+        from exprmat.reader.spatial import read_visium
+        res['rnasp-b'][i_sample] = read_visium(
+            src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+            raw = False, default_taxa = i_taxa, eccentric = eccentric
+        )
+
+        res['rnasp-b'][i_sample].var = \
+            st.search_genes(res['rnasp-b'][i_sample].var_names.tolist())
+        
+        if save_simultaneously:
+            os.makedirs(os.path.join(dump, 'rnasp-b'), exist_ok = True)
+            res['rnasp-b'][i_sample].write_h5ad(
+                os.path.join(dump, 'rnasp-b', i_sample + '.h5ad')
+            )
+
+
+    elif i_mod == 'rnasp-s':
+        
+        if not 'rnasp-s' in res.keys(): res['rnasp-s'] = {}
+
+        from exprmat.reader.spatial import read_visium_hd
+        res['rnasp-s'][i_sample], cellseg = read_visium_hd(
+            src = i_loc, prefix = '', metadata = meta, sample = i_sample,
+            raw = False, default_taxa = i_taxa, eccentric = eccentric
+        )
+
+        res['rnasp-s'][i_sample].var = \
+            st.search_genes(res['rnasp-s'][i_sample].var_names.tolist())
+        
+        if cellseg is not None:
+            if not 'rnasp-c' in res.keys(): res['rnasp-c'] = {}
+            res['rnasp-c'][i_sample] = cellseg
+            res['rnasp-c'][i_sample].var = \
+                st.search_genes(res['rnasp-c'][i_sample].var_names.tolist())
+        
+        if save_simultaneously:
+            os.makedirs(os.path.join(dump, 'rnasp-s'), exist_ok = True)
+            res['rnasp-s'][i_sample].write_h5ad(
+                os.path.join(dump, 'rnasp-s', i_sample + '.h5ad')
+            )
+    
+    
+    elif i_mod == 'atac':
+        
+        if not 'atac' in res.keys(): res['atac'] = {}
+        default_assembly = i_assembly
+
+        from exprmat.peaks.common import import_fragments
+        frags = import_fragments(
+            i_loc,
+            assembly = default_assembly,
+            sorted_by_barcode = False,
+        )
+
+        # rename the fragments:
+        frags.obs['barcode'] = i_sample + ':' + frags.obs_names
+        frags.obs_names = [i_sample + ':' + str(ix + 1) for ix in range(frags.n_obs)]
+        frags.obs['ubc'] = frags.obs_names.copy()
+
+        frags.uns['assembly'] = default_assembly
+        # frags must not have the var table. otherwise error will occur when
+        # assigning bins to the vars.
+        res['atac'][i_sample] = frags
+
+        if save_simultaneously:
+            os.makedirs(os.path.join(dump, 'atac'), exist_ok = True)
+            res['atac'][i_sample].write_h5ad(
+                os.path.join(dump, 'atac', i_sample + '.h5ad')
+            )
+
+    elif i_mod in ['rna-bulk', 'atac-bulk']:
+        
+        # samples ended up with '-bulk' suffix will be processed into one
+        # predefined anndata named 'bulk' in the corresoponding modality.
+        # note that samples with different taxa property cannot be analysed together.
+        
+        pass
+
+    else: warning(f'sample {i_sample} have no supported modalities')
+
+    return res, appending_meta
+
 
 
 class experiment:
@@ -32,15 +334,17 @@ class experiment:
     
     def __init__(
         self, meta : exprmat.reader.metadata, 
+        
+        # user parameters
         eccentric = None, 
+        save_simultaneously = True,
+        dump = '.', 
+        subset = None,
+        version = em.SPECIFICATION,
+        parallel = False,
 
         # internal parameters
         mudata = None, modalities = {}, 
-
-        # user parameters
-        save_simultaneously = True,
-        dump = '.', subset = None,
-        version = em.SPECIFICATION
     ):
         
         table = meta.dataframe
@@ -62,296 +366,49 @@ class experiment:
             return
 
         self.modalities = {}
-        for ind, row in table.iterrows():
-             
-            i_loc, i_sample, i_batch, i_grp, i_mod, i_taxa = (
-                row['location'],
-                row['sample'],
-                row['batch'],
-                row['group'],
-                row['modality'],
-                row['taxa']
-            )
 
-            # extension of taxa: you can specify a specific version of the genome
-            # assembly when specifying taxa. leaving it out allows exprmat to choose
-            # the assembly (the latest version) automatically.
-
-            # e.g.
-            #    mmu            = 'grcm39'
-            #    mmu/grcm38     = 'grcm38'
-
-            if '/' in i_taxa: i_taxa, i_assembly = i_taxa.split('/')
-            else: i_assembly = cfg['default.assembly'][i_taxa]
+        # use parallel to load single cell samples.
+        if isinstance(parallel, int):
             
-            info(f'reading sample {i_sample} [{i_mod}] ...')
+            # shut up the package.
+            default_logger.silent = True
 
-            attempt_path = os.path.join(dump, i_mod, i_sample + '.h5ad')
-            if os.path.exists(attempt_path):
-                if not i_mod in self.modalities.keys(): self.modalities[i_mod] = {}
-                self.modalities[i_mod][i_sample] = sc.read_h5ad(attempt_path)
-                warning(f'load pre-exisiting file `{i_mod}/{i_sample}.h5ad`.')
-                continue
-
-            if i_mod == 'rna':
-
-                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
-
-                # we automatically infer from the given location names to select
-                # the correct way of loading samples:
-
-                if i_loc.endswith('.tsv.gz') or i_loc.endswith('.tsv'):
-
-                    self.modalities['rna'][i_sample] = read_table_rna(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = '\t'
+            from multiprocessing import Pool
+            from functools import partial
+            with Pool(parallel) as p:
+                res = list(
+                    pprog(
+                        p.imap(
+                            partial(
+                                load_data,
+                                meta = self.metadata,
+                                eccentric = eccentric,
+                                dump = self.directory,
+                                save_simultaneously = save_simultaneously,
+                            ),
+                            iterable = [row for ind, row in table.iterrows()],
+                            chunksize = 1,
+                        ),
+                        total = len(table),
+                        desc = 'loading data'
                     )
-
-                elif i_loc.endswith('.csv.gz') or i_loc.endswith('.csv'):
-
-                    self.modalities['rna'][i_sample] = read_table_rna(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ','
-                    )
-                
-                elif i_loc.endswith('.ssv.gz') or i_loc.endswith('.ssv'):
-
-                    self.modalities['rna'][i_sample] = read_table_rna(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric, sep = ' '
-                    )
-
-                elif i_loc.endswith('.h5ad'):
-
-                    self.modalities['rna'][i_sample] = read_h5ad_rna(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa
-                    )
-
-                elif i_loc.endswith('.h5'):
-                    
-                    self.modalities['rna'][i_sample] = read_h5_rna(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-
-                else:
-                    self.modalities['rna'][i_sample] = read_mtx_rna(
-                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-                
-                self.modalities['rna'][i_sample].var = \
-                    st.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
-                
-                # in search for spliced and unspliced reads
-
-                splicing = (
-                    (meta.dataframe['sample'] == i_sample) & 
-                    (meta.dataframe['modality'] == 'rna.splicing')
                 )
-
-                if splicing.sum() > 1:
-                    warning(f'ignored spliced reads for sample [{i_sample}], since you specify more than one.')
-                
-                elif splicing.sum() == 1:
-                    
-                    import warnings
-                    warnings.filterwarnings('ignore')
-
-                    splice_loc = meta.dataframe.loc[splicing, :].iloc[0, 0]
-                    if os.path.isdir(splice_loc):
-                        self.modalities['rna'][i_sample] = attach_splice_reads_mtx(
-                            self.modalities['rna'][i_sample], 
-                            splice_loc, default_taxa = i_taxa,
-                            sample = i_sample
-                        )
-
-                    elif splice_loc.endswith('.loom'):
-                        self.modalities['rna'][i_sample] = attach_splice_reads_loom(
-                            self.modalities['rna'][i_sample], 
-                            splice_loc, default_taxa = i_taxa,
-                            sample = i_sample
-                        )
-                    
-                    else: error('skipped spliced matrix, not valid data format.')
-                    warnings.filterwarnings('default')
-                
-                else: pass
-
-                if save_simultaneously:
-                    os.makedirs(os.path.join(self.directory, 'rna'), exist_ok = True)
-                    self.modalities['rna'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'rna', i_sample + '.h5ad')
-                    )
-
-
-            elif i_mod == 'rna.splicing': pass
-            elif i_mod == 'rna.tcr':
-
-                # 10x tcr folder
-                tcr = parse_tcr_10x(
-                    os.path.join(i_loc, 'filtered_contig_annotations.csv'),
-                    sample = i_sample,
-                    filter_non_productive = True,
-                    filter_non_full_length = True
-                )
-
-                if not os.path.exists(os.path.join(self.directory, 'tcr')):
-                    os.makedirs(os.path.join(self.directory, 'tcr'), exist_ok = True)
-
-                tcr.to_csv(
-                    os.path.join(self.directory, 'tcr', i_sample + '.tsv.gz'), 
-                    sep = '\t', index = False
-                )
-
-            elif i_mod == 'cite':
-
-                if not 'rna' in self.modalities.keys(): self.modalities['rna'] = {}
-                if not 'cite' in self.modalities.keys(): self.modalities['cite'] = {}
-
-                # we automatically infer from the given location names to select
-                # the correct way of loading samples:
-
-                if i_loc.endswith('.h5'):
-                    
-                    a, b = read_h5_cite(
-                        src = i_loc, metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-
-                    self.modalities['rna'][i_sample] = a
-                    self.modalities['cite'][i_sample] = b
-
-                else:
-                    a, b = read_mtx_cite(
-                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-
-                    self.modalities['rna'][i_sample] = a
-                    self.modalities['cite'][i_sample] = b
-                
-                self.modalities['rna'][i_sample].var = \
-                    st.search_genes(self.modalities['rna'][i_sample].var_names.tolist())
-                
-                rna_auto = row.copy()
-                rna_auto['modality'] = 'rna'
-                self.metadata.insert_row(rna_auto)
-
-                if save_simultaneously:
-                    os.makedirs(os.path.join(self.directory, 'rna'), exist_ok = True)
-                    os.makedirs(os.path.join(self.directory, 'cite'), exist_ok = True)
-                    self.modalities['rna'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'rna', i_sample + '.h5ad')
-                    )
-
-                    self.modalities['cite'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'cite', i_sample + '.h5ad')
-                    )
             
-            elif i_mod == 'rnasp-c':
-                
-                if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
+            default_logger.silent = False
 
-                from exprmat.reader.spatial import read_seekspace, read_xenium_explorer, is_xenium_explorer
+            for mod_dict, app_meta in res:
+                for i_mod in mod_dict.keys():
+                    if not i_mod in self.modalities.keys():
+                        self.modalities[i_mod] = {}
+                    for i_sample in mod_dict[i_mod].keys():
+                        self.modalities[i_mod][i_sample] = mod_dict[i_mod][i_sample]
                 
-                if is_xenium_explorer(i_loc):
-                    self.modalities['rnasp-c'][i_sample] = read_xenium_explorer(
-                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-                
-                else:
-                    self.modalities['rnasp-c'][i_sample] = read_seekspace(
-                        src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                        raw = False, default_taxa = i_taxa, eccentric = eccentric
-                    )
-
-                self.modalities['rnasp-c'][i_sample].var = \
-                    st.search_genes(self.modalities['rnasp-c'][i_sample].var_names.tolist())
-                
-            elif i_mod == 'rnasp-b':
-                
-                if not 'rnasp-b' in self.modalities.keys(): self.modalities['rnasp-b'] = {}
-
-                from exprmat.reader.spatial import read_visium
-                self.modalities['rnasp-b'][i_sample] = read_visium(
-                    src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                    raw = False, default_taxa = i_taxa, eccentric = eccentric
-                )
-
-                self.modalities['rnasp-b'][i_sample].var = \
-                    st.search_genes(self.modalities['rnasp-b'][i_sample].var_names.tolist())
-                
-                if save_simultaneously:
-                    os.makedirs(os.path.join(self.directory, 'rnasp-b'), exist_ok = True)
-                    self.modalities['rnasp-b'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'rnasp-b', i_sample + '.h5ad')
-                    )
-                
-            elif i_mod == 'rnasp-s':
-                
-                if not 'rnasp-s' in self.modalities.keys(): self.modalities['rnasp-s'] = {}
-
-                from exprmat.reader.spatial import read_visium_hd
-                self.modalities['rnasp-s'][i_sample], cellseg = read_visium_hd(
-                    src = i_loc, prefix = '', metadata = meta, sample = i_sample,
-                    raw = False, default_taxa = i_taxa, eccentric = eccentric
-                )
-
-                self.modalities['rnasp-s'][i_sample].var = \
-                    st.search_genes(self.modalities['rnasp-s'][i_sample].var_names.tolist())
-                
-                if cellseg is not None:
-                    if not 'rnasp-c' in self.modalities.keys(): self.modalities['rnasp-c'] = {}
-                    self.modalities['rnasp-c'][i_sample] = cellseg
-                    self.modalities['rnasp-c'][i_sample].var = \
-                        st.search_genes(self.modalities['rnasp-c'][i_sample].var_names.tolist())
-                
-                if save_simultaneously:
-                    os.makedirs(os.path.join(self.directory, 'rnasp-s'), exist_ok = True)
-                    self.modalities['rnasp-s'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'rnasp-s', i_sample + '.h5ad')
-                    )
-            
-            elif i_mod == 'atac':
-                
-                if not 'atac' in self.modalities.keys(): self.modalities['atac'] = {}
-                default_assembly = i_assembly
-
-                from exprmat.peaks.common import import_fragments
-                frags = import_fragments(
-                    i_loc,
-                    assembly = default_assembly,
-                    sorted_by_barcode = False,
-                )
-
-                # rename the fragments:
-                frags.obs['barcode'] = i_sample + ':' + frags.obs_names
-                frags.obs_names = [i_sample + ':' + str(ix + 1) for ix in range(frags.n_obs)]
-                frags.obs['ubc'] = frags.obs_names.copy()
-
-                frags.uns['assembly'] = default_assembly
-                # frags must not have the var table. otherwise error will occur when
-                # assigning bins to the vars.
-                self.modalities['atac'][i_sample] = frags
-
-                if save_simultaneously:
-                    os.makedirs(os.path.join(self.directory, 'atac'), exist_ok = True)
-                    self.modalities['atac'][i_sample].write_h5ad(
-                        os.path.join(self.directory, 'atac', i_sample + '.h5ad')
-                    )
-
-            elif i_mod in ['rna-bulk', 'atac-bulk']:
-                
-                # samples ended up with '-bulk' suffix will be processed into one
-                # predefined anndata named 'bulk' in the corresoponding modality.
-                # note that samples with different taxa property cannot be analysed together.
-                
-                pass
-
-            else: warning(f'sample {i_sample} have no supported modalities')
+                for am in app_meta:
+                    self.metadata.insert_row(am)
+        
+        else:
+            for ind, row in table.iterrows():
+                load_data(row, self.metadata, eccentric, dump, save_simultaneously)
 
 
         self.metadata.dataframe = self.metadata.dataframe.loc[

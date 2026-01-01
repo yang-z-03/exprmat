@@ -7,7 +7,48 @@ from functools import partial
 from tqdm import tqdm
 from tqdm.auto import tqdm as tqdma
 
-SILENT = False
+
+class logger:
+
+    silent = False
+
+    def __init__(self, silent: bool = False) -> None:
+        self.silent = silent
+    
+    def error(self, text: str, error = None) -> None:
+
+        if self.silent: 
+            if error: raise Exception(text) from error
+            else: raise Exception(text)
+
+        fore_red()
+        print('[error]', end = ' ')
+        ansi_reset()
+        print(text)
+
+        if error is None: raise Exception(text)
+        else: raise Exception(text) from error
+
+
+    def warning(self, text: str) -> None:
+        if self.silent: return
+        fore_yellow()
+        print('[!]', end = ' ')
+        ansi_reset()
+        print(text)
+        ansi_reset()
+
+
+    def info(self, text: str) -> None:
+        if self.silent: return
+        fore_cyan()
+        print('[i]', end = ' ')
+        ansi_reset()
+        print(text)
+        ansi_reset()
+
+
+default_logger = logger()
 
 
 def fore_black() -> None:
@@ -114,32 +155,15 @@ def format_file_size(size):
 
 
 def error(text: str, error = None) -> None:
-    if SILENT: raise Exception(text) from error
-    fore_red()
-    print('[error]', end = ' ')
-    ansi_reset()
-    print(text)
-
-    if error is None: raise Exception(text)
-    else: raise Exception(text) from error
+    default_logger.error(text, error)
 
 
 def warning(text: str) -> None:
-    if SILENT: return
-    fore_yellow()
-    print('[!]', end = ' ')
-    ansi_reset()
-    print(text)
-    ansi_reset()
+    default_logger.warning(text)
 
 
 def info(text: str) -> None:
-    if SILENT: return
-    fore_cyan()
-    print('[i]', end = ' ')
-    ansi_reset()
-    print(text)
-    ansi_reset()
+    default_logger.info(text)
 
 
 def clear():
