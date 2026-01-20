@@ -1,0 +1,50 @@
+[package]
+name = "snapatac2"
+version = "2.8.0"
+edition = "2021"
+authors = ["Kai Zhang <kai@kzhang.org>"]
+license = "MIT"
+readme = "readme"
+
+[dependencies]
+snapatac2-core = { workspace = true }
+anndata = "0.4.2"
+anndata-hdf5 = "0.3"
+pyanndata = "0.4.1"
+anyhow = "1.0"
+bed-utils = "0.7.1"
+flate2 = "1.0"
+itertools = "0.13"
+indicatif = "0.17"
+linreg = "0.2"
+log = "0.4"
+linfa = "0.6"
+linfa-clustering = "0.6"
+noodles = { version = "0.84", features = ["bam", "sam"] }
+numpy = "0.21.0"
+num = "0.4"
+nalgebra-sparse = "0.9"
+nalgebra = "0.32"
+ndarray = "0.15"
+polars = { version = "0.40", features = ["ndarray", "dtype-categorical"] }
+pyo3-log = "0.11"
+pyo3-polars = "0.14"
+rand_isaac = "0.3"
+rand_core = "0.6"
+rand = "0.8"
+rayon = "1.10"
+statrs = "0.17"
+sanitize-filename = "0.5"
+tempfile = "3.3"
+zstd = { version = "0.13", features = ["zstdmt"] }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = {version = "0.6", features = ["disable_initial_exec_tls"]}
+
+[dependencies.pyo3]
+version = "0.21.2"
+features = ["extension-module", "anyhow"]
+
+[lib]
+name = "snapatac2"
+crate-type = ["cdylib"]

@@ -1,0 +1,291 @@
+
+import os
+import pandas
+from exprmat import basepath
+from exprmat.ansi import warning, info
+from exprmat import config as cfg
+
+genome = {}
+
+def refresh_genome():
+    '''
+    You should set the configuration prior to any possible call to this package (by default Mus 
+    musculus). If you change the target taxa, you should manually call ``refresh_genome`` to 
+    force an update of the data.
+    '''
+
+    genome = {}
+    return
+
+
+def get_genome(taxa):
+    '''
+    Retrieve the gene annotation table for specified species. Note that the species settings is
+    automatically read from the configuration. You should set the configuration prior to any
+    possible call to this package (by default Mus musculus). If you change the target taxa, you
+    should manually call ``refresh_genome`` to force an update of the data.
+    '''
+
+    if taxa not in genome.keys(): genome[taxa] = {}
+    if 'genes' in genome[taxa].keys(): return genome[taxa]['genes']
+    genome[taxa]['genes'] = pandas.read_feather(
+        os.path.join(basepath, f'{taxa}', 'genome.feather')
+    )
+
+    genome[taxa]['genes'].index = genome[taxa]['genes']['uid'].tolist()
+    return genome[taxa]['genes']
+
+
+def get_genome_size(assembly, as_dataframe = False):
+
+    import json
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'size.json')
+    with open(path, 'r', encoding = 'utf-8') as f:
+        sizes = json.load(f)
+    
+    if as_dataframe: return pandas.DataFrame({
+        'seqname': sizes.keys(),
+        'len': [sizes[k] for k in sizes.keys()]
+    })
+
+    else: return sizes
+
+
+def get_genome_gff_fname(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'annotations.gff.gz')
+    return path
+
+
+def get_genome_architecture(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'architecture.tsv')
+    return pandas.read_table(path, sep = '\t')
+
+
+def get_genome_cytobands(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'cytobands.tsv')
+    return pandas.read_table(path, sep = '\t')
+
+
+def get_genome_model(assembly):
+
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), 'gene-models.feather')
+    return pandas.read_feather(path)
+
+
+def get_genome_ranges(assembly, fname, as_grange = False):
+    
+    taxa = cfg['taxa.reference'][assembly.lower()]
+    path = os.path.join(basepath, taxa, 'assemblies', assembly.lower(), f'{fname}.feather')
+    feather = pandas.read_feather(path)
+    feather = feather.loc[feather['end'] - feather['start'] > 0, :].copy()
+    
+    if as_grange: 
+        import genomicranges
+        return genomicranges.GenomicRanges.from_pandas(
+            feather[['chr', 'start', 'end', 'strand', 'gene']].rename(
+            columns = {'chr': 'seqnames', 'start': 'starts', 'end': 'ends'}
+        ))
+    else: return feather
+
+
+def get_genome_first_exonic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'first-exonic', as_grange = as_grange)
+
+def get_genome_other_exonic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'other-exonic', as_grange = as_grange)
+
+def get_genome_first_intronic(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'first-intronic', as_grange = as_grange)
+
+def get_genome_transcript(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'genebody', as_grange = as_grange)
+
+def get_genome_promoters(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'promoters', as_grange = as_grange)
+
+def get_genome_utr3(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'utr3', as_grange = as_grange)
+
+def get_genome_utr5(assembly, as_grange = False):
+    return get_genome_ranges(assembly, 'utr5', as_grange = as_grange)
+
+
+def get_mapper_name(taxa):
+    '''
+    Return a name mapper mapping from gene names to universal gene id across species.
+    This list will be automatically updated when it experiences more name-accession pairs when
+    reading the 10x features table. This aims to adapt to the changing nomenclature in different
+    versions of cellranger annotations.
+    '''
+
+    # we will construct the gene table for ensembl id and gene name alias at once during
+    # the startup process of this script. then we will be able to directly calls for
+    # its ugene id in all the next times.
+
+    if taxa not in genome.keys(): genome[taxa] = {}
+    if 'mapper.name' in genome[taxa].keys(): return genome[taxa]['mapper.name']
+    import pickle
+    if os.path.exists(os.path.join(basepath, f'{taxa}', 'mapping-name.pkl')):
+
+        with open(os.path.join(basepath, f'{taxa}', 'mapping-name.pkl'), 'rb') as fens:
+            name_finder = pickle.load(fens)
+
+    else:
+
+        gtable = get_genome(taxa)
+        name_list = gtable[['gene']].values.transpose()[0].tolist()
+        name_finder = {}
+
+        # alias_list = gtable[['alias']].values.transpose()[0].tolist()
+        id_list = gtable.index.tolist()
+        duplicates = []
+        alias_finder = {}
+
+        # for x in range(len(alias_list)):
+        #     alias = alias_list[x]
+        #     if not isinstance(alias, str): continue
+        #     if len(alias) > 0:
+        #         spl = alias.split(';')
+        #         for y in spl:
+        #             if y not in alias_finder.keys(): alias_finder[y] = x
+        #             elif y not in duplicates: duplicates += [y]
+
+        for x in duplicates: del alias_finder[x]
+        for k in alias_finder.keys(): name_finder[k] = taxa + ':' + id_list[alias_finder[k]]
+
+        for i in range(len(name_list)):
+            name_finder[name_list[i]] = taxa + ':' + id_list[i]
+
+        # write the generated name mapping to file cache.
+        with open(os.path.join(basepath, f'{taxa}', 'mapping-name.pkl'), 'wb') as f:
+            pickle.dump(name_finder, f)
+
+    genome[taxa]['mapper.name'] = name_finder
+    return name_finder
+
+
+def get_mapper_ensembl(taxa):
+    '''
+    Return a name mapper mapping from ENSEMBL gene IDs to universal gene id across species.
+    This list will be automatically updated when it experiences more name-accession pairs when
+    reading the 10x features table. This aims to adapt to the changing nomenclature in different
+    versions of cellranger annotations.
+    '''
+
+    if taxa not in genome.keys(): genome[taxa] = {}
+    if 'mapper.ensembl' in genome[taxa].keys(): return genome[taxa]['mapper.ensembl']
+    import pickle
+    if os.path.exists(os.path.join(basepath, f'{taxa}', 'mapping-ensembl.pkl')):
+
+        with open(os.path.join(basepath, f'{taxa}', 'mapping-ensembl.pkl'), 'rb') as fens:
+            ensembl_finder = pickle.load(fens)
+
+    else:
+
+        gtable = get_genome(taxa)
+        ensembl_list = gtable[['id']].values.transpose()[0].tolist()
+        id_list = gtable.index.tolist()
+        ensembl_finder = {}
+
+        for i in range(len(ensembl_list)):
+            ensembl_finder[ensembl_list[i]] = taxa + ':' + id_list[i]
+    
+        # write the generated name mapping to file cache.
+        with open(os.path.join(basepath, f'{taxa}', 'mapping-ensembl.pkl'), 'wb') as f:
+            pickle.dump(ensembl_finder, f)
+
+    genome[taxa]['mapper.ensembl'] = ensembl_finder
+    return ensembl_finder
+
+
+def update_mapper(taxa, name, ens):
+    '''
+    Update the name ENSEMBL ID pair.
+    '''
+    
+    if taxa not in genome.keys():
+        get_mapper_name(taxa)
+
+    if 'mapper.name' not in genome[taxa].keys():
+        get_mapper_name(taxa)
+
+    if 'mapper.ensembl' not in genome[taxa].keys():
+        get_mapper_ensembl(taxa)
+    
+    if (name not in genome[taxa]['mapper.name'].keys()):
+        if (ens in genome[taxa]['mapper.ensembl'].keys()):
+            genome[taxa]['mapper.name'][name] = genome[taxa]['mapper.ensembl'][ens]
+        else: 
+            # info(f'{ens} -> {name} pair could not be established.')
+            # this info log is too noisy.
+            pass
+
+    else:
+        if (ens not in genome[taxa]['mapper.ensembl'].keys()):
+            genome[taxa]['mapper.ensembl'][ens] = genome[taxa]['mapper.name'][name]
+        else: # both name and ens present in the dictionary, check for inconsistancy
+            if genome[taxa]['mapper.ensembl'][ens] != genome[taxa]['mapper.name'][name]:
+                warning(f'{ens} -> {name} is conflicted. ({ens} registered to {genome[taxa]["mapper.ensembl"][ens]}, while {name} to {genome[taxa]["mapper.name"][name]})')
+
+    
+    return
+
+
+def update_mapper_name(taxa, name, ugene):
+    '''
+    Update the gene name to unique gene id mapping.
+    '''
+    
+    if taxa not in genome.keys():
+        get_mapper_name(taxa)
+
+    if 'mapper.name' not in genome[taxa].keys():
+        get_mapper_name(taxa)
+    
+    if name not in genome[taxa]['mapper.name'].keys():
+        genome[taxa]['mapper.name'][name] = ugene
+    
+    return
+
+
+def update_mapper_ensembl(taxa, ensembl, ugene):
+    '''
+    Update the gene ENSEMBL ID to unique gene id mapping.
+    '''
+
+    if taxa not in genome.keys():
+        get_mapper_ensembl(taxa)
+
+    if 'mapper.ensembl' not in genome[taxa].keys():
+        get_mapper_ensembl(taxa)
+    
+    if ensembl not in genome[taxa]['mapper.ensembl'].keys():
+        genome[taxa]['mapper.ensembl'][ensembl] = ugene
+    
+    return
+
+
+def save_genome_changes(taxa):
+    '''
+    Write the changes to the mapper to disk. Remember to save this if you would like to memorize
+    the new mappings learned from your data to faciliate later use with this mapping.
+    '''
+
+    name_finder = get_mapper_name(taxa)
+    ensembl_finder = get_mapper_ensembl(taxa)
+    import pickle
+
+    with open(os.path.join(basepath, f'{taxa}', 'mapping-name.pkl'), 'wb') as f:
+        pickle.dump(name_finder, f)
+    with open(os.path.join(basepath, f'{taxa}', 'mapping-ensembl.pkl'), 'wb') as f:
+        pickle.dump(ensembl_finder, f)
+    
+    return

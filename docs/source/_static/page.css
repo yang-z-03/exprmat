@@ -1,0 +1,42 @@
+
+.lg\:grid-cols-\[240px_minmax\(0\2c 1fr\)\]{ 
+    grid-template-columns:300px minmax(0,1fr) !important; 
+}
+
+@media (min-width: 1600px){
+    .container{
+        max-width: 1700px !important;
+    }
+}
+
+div.sd-summary-content > p.sd-card-text,
+dd > p, li > p,
+div.admonition > p {
+    line-height: 1.75em;
+}
+
+.dark {
+    scrollbar-color: #444 #111 !important;
+    --background: 0 0% 4% !important;
+}
+
+html.dark img.image-light {
+    display: none
+}
+
+html:not(.dark) img.image-dark {
+    display: none
+}
+
+#content img {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+#content h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    line-height: 2.5rem;
+    margin-bottom: .5rem;
+    margin-top: 2.5rem !important;
+}

@@ -1,0 +1,5 @@
+location,sample,batch,group,modality,taxa
+./oe1/filtered,oe,b1,"somatic(cond(cd8, oe(A)))",rna,mmu
+./oe1/velocyto/splicing.loom,oe,b1,"somatic(cond(cd8, oe(A)))",rna.splicing,mmu
+./wt1/filtered,wt,b2,somatic(wt),rna,mmu
+./wt1/velocyto/splicing.loom,wt,b2,somatic(wt),rna.splicing,mmu

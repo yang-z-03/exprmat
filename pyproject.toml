@@ -1,0 +1,165 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "."
+module-name = "exprmat.snapatac"
+manifest-path = "snapatac2/Cargo.toml"
+exclude = [
+    "exprmat/data/tools/**/*",
+    "exprmat/data/tools/*",
+    "exprmat/peaks/idr/invcdf.c",
+    "exprmat/peaks/idr/*.so"
+]
+
+[project]
+name = "exprmat"
+description = "exprmat: Routines for expression matrices"
+readme = "readme.md"
+license = {file = "license"}
+requires-python = ">=3.10, <3.14"
+version = "0.1.53"
+authors = [
+    {name = "Zheng Yang", email = "xornent@outlook.com"}
+]
+
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy"
+]
+
+dependencies = [
+    'anndata >= 0.8.0',
+    'multiprocess',
+    'MACS3 >= 3.0, < 3.1',
+    'natsort', 
+    'numpy',
+    'pandas >= 2.0',
+    'polars >= 1.0, < 2.0',
+    'pooch >= 1.6.0, < 2.0.0',
+    'igraph >= 0.10.3',
+    'pyarrow',
+    'pyfaidx >= 0.7.0, < 0.8.0',
+    'rustworkx',
+    'scipy >= 1.11, < 2.0.0',
+    'scikit-learn >= 1.1, < 2.0.0',
+    'tqdm >= 4.62',
+    'typeguard >= 4.0',
+    'umap-learn >= 0.5.0',
+    'scvi-tools >= 1.3.0',
+    'scanpy',
+    'mudata',
+    'matplotlib',
+    'seaborn',
+    'torch >= 2.0',
+    'annoy',
+    'scikit-image',
+    'scikit-misc',
+    'bbknn',
+    'scanorama',
+    'harmonypy >= 0.2.0',
+    'pymde',
+    'datashader',
+    'fa2_modified',
+    'pynndescent',
+    'gseapy',
+    'metacells',
+    'sh',
+    'networkx',
+    'palantir',
+    'adjustText',
+    'h5py',
+    'cytoolz',
+    'frozendict',
+    'dask',
+    'boltons',
+    'multiprocessing_on_dill',
+    'pysam',
+    'hdbscan',
+    'graphtools',
+    'bincsync >= 0.4.0',
+    'pyBigWig',
+    'spatialdata',
+    'loompy',
+    'zarr',
+    'scikit-image',
+    'spatial-image',
+    'multiscale-spatial-image',
+    'tangram-sc',
+    'shapely >= 2.0.0',
+    'pyogrio >= 0.7.2',
+    'pyproj >= 3.3.0',
+    'geopandas',
+    'packaging',
+    'lightmotif',
+    'pymemesuite',
+    'formulaic >= 1.0.2',
+    'formulaic-contrasts >= 0.2.0',
+    'Cython',
+    'pyfastx',
+    'genomicranges',
+    'rustworkx',
+    'xgboost',
+    'simpleppt',
+    'elpigraph-python',
+    'dask-expr >= 2.0',
+    'einops == 0.8.1',
+]
+
+[project.optional-dependencies]
+dev = [
+    'sphinx',
+    'twine',
+    'ipykernel',
+    'ipytree'
+]
+
+cuda12 = [
+
+    # rapids
+    "cudf-cu12 == 25.8.*",
+    "dask-cudf-cu12 == 25.8.*", 
+    "cuml-cu12 == 25.8.*",
+    "cugraph-cu12 == 25.8.*",
+    "nx-cugraph-cu12 == 25.8.*",
+    "cuxfilter-cu12 == 25.8.*",
+    "cucim-cu12 == 25.8.*", 
+    "pylibraft-cu12 == 25.8.*", 
+    "raft-dask-cu12 == 25.8.*",
+    "cuvs-cu12 == 25.8.*",
+    "nx-cugraph-cu12 == 25.8.*",
+
+    # cupy
+    "cupy-cuda12x",
+
+    # rapids-singlecell
+    "rapids-singlecell"
+]
+
+cuda13 = [
+
+    # rapids
+    "cudf-cu13 == 25.12.*",
+    "dask-cudf-cu13 == 25.12.*", 
+    "cuml-cu13 == 25.12.*",
+    "cugraph-cu13 == 25.12.*",
+    "nx-cugraph-cu13 == 25.12.*",
+    "cuxfilter-cu13 == 25.12.*",
+    "cucim-cu13 == 25.12.*", 
+    "pylibraft-cu13 == 25.12.*", 
+    "raft-dask-cu13 == 25.12.*",
+    "cuvs-cu13 == 25.12.*",
+    "nx-cugraph-cu13 == 25.12.*",
+
+    # cupy
+    "cupy-cuda13x",
+
+    # rapids-singlecell
+    "rapids-singlecell"
+]
+
+[project.urls]
+Repository = "https://github.com/yang-z-03/exprmat"

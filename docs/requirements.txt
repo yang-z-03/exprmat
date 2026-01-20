@@ -1,0 +1,9 @@
+sphinx
+sphinxawesome-theme==5.3.2
+numpy
+anndata
+mudata
+pandas
+scanpy
+sphinx_design
+nbsphinx
